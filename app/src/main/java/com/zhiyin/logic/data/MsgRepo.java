@@ -151,11 +151,12 @@ public class MsgRepo {
         } catch (Exception ignored) {}
     }
 
-    private static String stripStickerMarkers(String s) {
+    private static String normalizeMirrorText(String s) {
         if (s == null) return "";
         return s.replaceAll("\\[STICKER:[^\\]]*\\]", "")
                 .replaceAll("\\[CUSTOM_STICKER:[^\\]]*\\]", "")
                 .replaceAll("\\|#\\d+", "")
+                .replaceAll("[\\u3002\\uff01\\uff1f!?\\u2026\\uff0c,\\uff1b;\\u3001]", "")
                 .replaceAll("\\s+", "");
     }
 
@@ -167,7 +168,7 @@ public class MsgRepo {
             if ("user".equals(role) && c.matches("^\\[表情:[^\\]]*\\]$")) return true;
             if (c.matches("^\\[(CUSTOM_)?STICKER:[^\\]]*\\]$")) return true;
             final long WINDOW = 90 * 1000L;
-            final String target = stripStickerMarkers(c);
+            final String target = normalizeMirrorText(c);
             if (target.isEmpty()) return false;
             List<String> win = new ArrayList<>();
             for (int i = 0; i < localArr.length(); i++) {
@@ -175,7 +176,7 @@ public class MsgRepo {
                 if (!role.equals(o.optString("role", ""))) continue;
                 long lt = o.optLong("time", 0);
                 if (lt > 0 && Math.abs(lt - time) <= WINDOW) {
-                    win.add(stripStickerMarkers(o.optString("content", "")));
+                    win.add(normalizeMirrorText(o.optString("content", "")));
                 }
             }
             for (int i = 0; i < win.size(); i++) {
