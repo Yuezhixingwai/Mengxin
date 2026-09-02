@@ -265,8 +265,11 @@ class GroupChatViewModel(
         EngineBus.register(this)
         val sp = app.getSharedPreferences("zhiyin_msgs", Application.MODE_PRIVATE)
         if (!sp.contains(sessionId)) sp.edit().putString(sessionId, "[]").apply()
+    }
+
+    fun enter() {
         MsgRepo.setActiveSession(sessionId)
-        MsgRepo.markAllRead(app, sessionId)
+        MsgRepo.markAllRead(getApplication(), sessionId)
         reload()
     }
 

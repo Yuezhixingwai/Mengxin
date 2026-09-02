@@ -155,6 +155,8 @@ fun rememberToastState(): ToastState = remember { ToastState() }
 
 @Composable
 fun LingXinToastHost(message: String?, id: Long) {
+    var lastMessage by remember { mutableStateOf<String?>(null) }
+    if (message != null) lastMessage = message
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         AnimatedVisibility(
             visible = message != null,
@@ -179,7 +181,7 @@ fun LingXinToastHost(message: String?, id: Long) {
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        message.orEmpty(),
+                        lastMessage.orEmpty(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.inverseOnSurface,
                     )
@@ -192,6 +194,8 @@ fun LingXinToastHost(message: String?, id: Long) {
 @Composable
 fun LingXinToastHost(state: ToastState) {
     val message = state.message
+    var lastMessage by remember { mutableStateOf<String?>(null) }
+    if (message != null) lastMessage = message
     LaunchedEffect(state.id) {
         if (state.id > 0) {
             delay(2200)
@@ -222,7 +226,7 @@ fun LingXinToastHost(state: ToastState) {
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        message.orEmpty(),
+                        lastMessage.orEmpty(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.inverseOnSurface,
                     )

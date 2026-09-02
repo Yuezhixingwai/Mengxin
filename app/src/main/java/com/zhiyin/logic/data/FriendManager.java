@@ -11,6 +11,7 @@ import java.util.List;
 
 public class FriendManager {
     private static final Map<String, Integer> sNameToId = new HashMap<>();
+    private static volatile List<Friend> sFriendsCache = new ArrayList<>();
     public static class Friend {
         public int id;
         public String name, persona, avatar;
@@ -37,6 +38,7 @@ public class FriendManager {
                     for (Friend f : list) {
                         if (f.name != null && !f.name.isEmpty()) sNameToId.put(f.name, f.id);
                     }
+                    sFriendsCache = list;
                     new Handler(Looper.getMainLooper()).post(() -> cb.onResult(list));
                 } catch (Exception e) {
                     new Handler(Looper.getMainLooper()).post(() -> cb.onError(e.getMessage()));
@@ -77,5 +79,9 @@ public class FriendManager {
         if (name == null) return -1;
         Integer id = sNameToId.get(name);
         return id == null ? -1 : id;
+    }
+
+    public static List<Friend> getCachedFriends() {
+        return sFriendsCache;
     }
 }

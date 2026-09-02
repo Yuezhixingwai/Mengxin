@@ -375,6 +375,18 @@ public class MsgRepo {
         } catch (Exception ignored) {}
     }
 
+    public static void markAllSessionsRead(Context ctx) {
+        try {
+            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
+            java.util.Map<String, ?> all = sp.getAll();
+            for (String key : all.keySet()) {
+                if (key.startsWith("persona_") || key.startsWith("group_")) {
+                    markAllRead(ctx, key);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     public static void updateLast(Context ctx, String sid, String oldPrefix, String newContent) {
         try {
             SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);

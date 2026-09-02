@@ -929,14 +929,35 @@ fun ComposeMomentScreen(
 
             if (uploadedUrls.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    uploadedUrls.take(9).forEach { url ->
-                        WebImage(
-                            url = url,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(RoundedCornerShape(10.dp)),
-                        )
+                    uploadedUrls.take(9).forEachIndexed { index, url ->
+                        Box {
+                            WebImage(
+                                url = url,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(10.dp)),
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(2.dp)
+                                    .size(18.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.55f))
+                                    .clickable {
+                                        uploadedUrls = uploadedUrls.filterIndexed { i, _ -> i != index }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Close,
+                                    contentDescription = "删除图片",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp),
+                                )
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(8.dp))

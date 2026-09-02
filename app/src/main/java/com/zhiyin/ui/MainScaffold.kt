@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Groups2
 import androidx.compose.material.icons.rounded.PeopleAlt
@@ -517,6 +518,7 @@ private fun CircularActionMenuOverlay(
             QuickActionItem("发起群聊", Icons.Rounded.Groups2),
             QuickActionItem("朋友圈", Icons.Rounded.PeopleAlt),
             QuickActionItem("圆桌会议", Icons.Rounded.Forum),
+            QuickActionItem("全部已读", Icons.Rounded.CheckCircle),
         )
     }
 
@@ -836,6 +838,11 @@ private fun MainContent(
                 1 -> onCreateGroup()
                 2 -> onOpenMoments()
                 3 -> onOpenRoundtable()
+                4 -> {
+                    MsgRepo.markAllSessionsRead(context)
+                    chatListVm.refresh()
+                    appVm.showToast("全部消息已标记已读")
+                }
             }
         },
     )

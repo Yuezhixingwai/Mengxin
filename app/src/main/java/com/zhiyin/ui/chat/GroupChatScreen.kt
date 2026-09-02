@@ -1,19 +1,26 @@
 package com.zhiyin.ui.chat
 
+import android.graphics.Bitmap
 import android.view.WindowManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,6 +28,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -37,6 +45,8 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Redeem
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -56,6 +66,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -65,7 +76,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -74,16 +90,28 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.zhiyin.ui.components.GroupAvatar
+import com.zhiyin.ui.components.ImageCropperDialog
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.LingXinSheet
 import com.zhiyin.ui.components.UserAvatar
 import com.zhiyin.ui.RubberBandBox
+import com.zhiyin.ui.vm.ChatMsg
 import com.zhiyin.ui.vm.GroupChatViewModel
 import com.zhiyin.ui.vm.TimeFmt
-import com.zhiyin.ui.vm.ChatMsg
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import java.io.File
+import kotlin.concurrent.thread
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    dev.chrisbanes.haze.ExperimentalHazeApi::class,
+)
 @Composable
 fun GroupChatScreen(
     groupName: String,
@@ -96,6 +124,8 @@ fun GroupChatScreen(
     )
     val context = LocalContext.current
 
+    LaunchedEffect(Unit) { vm.enter() }
+
     var input by rememberSaveable { mutableStateOf("") }
     var showPlusPanel by remember { mutableStateOf(false) }
     var showRedpacket by remember { mutableStateOf(false) }
@@ -104,6 +134,22 @@ fun GroupChatScreen(
     val isLongInput = input.length >= 80 || input.count { it == '\n' } >= 3
     var actionMsgIndex by remember { mutableStateOf<Int?>(null) }
     var showMenu by remember { mutableStateOf(false) }
+
+    val bgPrefs = remember { context.getSharedPreferences("zhiyin_chat_bg", 0) }
+    var chatBgPath by remember { mutableStateOf(bgPrefs.getString("bg_path", "") ?: "") }
+    var cropSource by remember { mutableStateOf<String?>(null) }
+    val bgPick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val copied = ContentCopy.copyToCache(context, uri, "chatbg")
+        if (copied != null) cropSource = copied.path
+    }
+    val bgBmp by produceState<ImageBitmap?>(initialValue = null, chatBgPath) {
+        value = if (chatBgPath.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                if (File(chatBgPath).exists()) decodeSampledGroup(chatBgPath, 1440)?.asImageBitmap() else null
+            }
+        } else null
+    }
 
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = (vm.messages.size - 1).coerceAtLeast(0),
@@ -124,46 +170,52 @@ fun GroupChatScreen(
         lastMsgKey = key
     }
 
-    Column(
+    val hazeState = remember { HazeState() }
+    val topBarTotalHeight = 64.dp + WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val density = LocalDensity.current
+    var inputBarHeight by remember { mutableStateOf(0.dp) }
+    LaunchedEffect(inputBarHeight) {
+        if (inputBarHeight <= 0.dp || vm.messages.isEmpty()) return@LaunchedEffect
+        val lastMessageIndex = vm.messages.size - 1
+        val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+        if (lastVisibleIndex >= lastMessageIndex - 1) {
+            listState.scrollToItem(lastMessageIndex)
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface),
     ) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-            title = {
-                Column {
-                    Text(
-                        groupName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        "${vm.group.members.size}人",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            actions = {
-                IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Rounded.MoreVert, contentDescription = "群设置")
-                }
-            },
-        )
-
+        bgBmp?.let {
+            Image(
+                bitmap = it,
+                contentDescription = "聊天背景",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (bgBmp != null) Modifier.padding(top = topBarTotalHeight, bottom = inputBarHeight) else Modifier),
+        ) {
         RubberBandBox(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .then(if (bgBmp == null) Modifier.hazeSource(hazeState) else Modifier),
         ) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                end = 12.dp,
+                top = if (bgBmp == null) topBarTotalHeight else 0.dp,
+                bottom = if (bgBmp == null) 10.dp + inputBarHeight else 10.dp,
+            ),
         ) {
             items(vm.messages, key = { it.index }) { msg ->
                 val prev = vm.messages.getOrNull(msg.index - 1)
@@ -198,6 +250,26 @@ fun GroupChatScreen(
         }
         }
 
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .then(if (bgBmp == null) {
+                    Modifier.hazeEffect(
+                        state = hazeState,
+                        style = HazeDefaults.style(
+                            backgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                            blurRadius = 18.dp,
+                            noiseFactor = 0.06f,
+                        ),
+                    )
+                } else {
+                    Modifier
+                })
+                .onSizeChanged { inputBarHeight = with(density) { it.height.toDp() } }
+                .navigationBarsPadding()
+                .imePadding(),
+        ) {
         AnimatedVisibility(
             visible = isLongInput,
             enter = expandVertically(tween(180)) + fadeIn(tween(180)),
@@ -234,8 +306,6 @@ fun GroupChatScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
@@ -277,6 +347,49 @@ fun GroupChatScreen(
                 Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "发送", modifier = Modifier.size(20.dp))
             }
         }
+        }
+
+        TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+            ),
+            modifier = if (bgBmp == null) {
+                Modifier.hazeEffect(
+                    state = hazeState,
+                    style = HazeDefaults.style(
+                        backgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                        blurRadius = 18.dp,
+                        noiseFactor = 0.06f,
+                    ),
+                )
+            } else {
+                Modifier
+            },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
+                }
+            },
+            title = {
+                Column {
+                    Text(
+                        groupName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "${vm.group.members.size}人",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            actions = {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = "群设置")
+                }
+            },
+        )
     }
 
     if (showPlusPanel) {
@@ -383,12 +496,45 @@ fun GroupChatScreen(
 
     if (showMenu) {
         com.zhiyin.ui.components.LingXinMenuOverlay(
-            items = listOf(com.zhiyin.ui.components.MenuItemSpec("退出群聊", danger = true)),
+            items = listOf(
+                com.zhiyin.ui.components.MenuItemSpec("设置聊天背景", icon = Icons.Rounded.Wallpaper),
+                com.zhiyin.ui.components.MenuItemSpec("恢复默认背景", icon = Icons.Rounded.Refresh),
+                com.zhiyin.ui.components.MenuItemSpec("退出群聊", danger = true),
+            ),
             onDismiss = { showMenu = false },
-            onSelect = {
+            onSelect = { index ->
                 showMenu = false
-                showLeave = true
+                when (index) {
+                    0 -> bgPick.launch("image/*")
+                    1 -> {
+                        bgPrefs.edit().remove("bg_path").apply()
+                        chatBgPath = ""
+                    }
+                    2 -> showLeave = true
+                }
             },
+        )
+    }
+
+    cropSource?.let { path ->
+        ImageCropperDialog(
+            path = path,
+            frameAspect = context.resources.displayMetrics.let { it.widthPixels.toFloat() / it.heightPixels },
+            onConfirm = { bmp ->
+                cropSource = null
+                thread {
+                    try {
+                        val f = File(context.filesDir, "chat_bg.jpg")
+                        f.outputStream().use { out -> bmp.compress(Bitmap.CompressFormat.JPEG, 90, out) }
+                        bgPrefs.edit().putString("bg_path", f.absolutePath).apply()
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            chatBgPath = f.absolutePath
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+            },
+            onCancel = { cropSource = null },
         )
     }
 
@@ -411,12 +557,12 @@ fun GroupChatScreen(
 @Composable
 private fun GroupMessageRow(msg: ChatMsg, animateIn: Boolean = false, onLongPress: () -> Unit) {
     val mine = msg.role == "user"
-    var speaker = ""
     var text = msg.content
-    val match = Regex("^\\[([^\\]]+)\\]\\s*(.*)$", RegexOption.DOT_MATCHES_ALL).find(msg.content)
-    if (!mine && match != null) {
-        speaker = match.groupValues[1]
-        text = match.groupValues[2]
+    if (!mine) {
+        val match = Regex("^[\\[【]([^\\]】]+)[\\]】]\\s*[:：]?\\s*(.*)$", RegexOption.DOT_MATCHES_ALL).find(msg.content)
+        if (match != null) {
+            text = match.groupValues[2]
+        }
     }
     MessageEntrance(mine = mine, animate = animateIn) {
         Row(
@@ -428,18 +574,10 @@ private fun GroupMessageRow(msg: ChatMsg, animateIn: Boolean = false, onLongPres
             horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
         ) {
             if (!mine) {
-                GroupAvatar(36.dp)
+                com.zhiyin.ui.DefaultAvatar(size = 36.dp)
                 Spacer(Modifier.width(8.dp))
             }
             Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                if (!mine && speaker.isNotEmpty()) {
-                    Text(
-                        speaker,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 2.dp, start = 4.dp),
-                    )
-                }
                 Surface(
                     shape = RoundedCornerShape(
                         topStart = if (mine) 18.dp else 6.dp,
@@ -615,5 +753,20 @@ private fun LongTextEditor(
                 }
             }
         }
+    }
+}
+
+private fun decodeSampledGroup(path: String, target: Int): android.graphics.Bitmap? {
+    return try {
+        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(path, opts)
+        var sample = 1
+        while (opts.outWidth / sample > target || opts.outHeight / sample > target) sample *= 2
+        android.graphics.BitmapFactory.decodeFile(
+            path,
+            android.graphics.BitmapFactory.Options().apply { inSampleSize = sample },
+        )
+    } catch (_: Exception) {
+        null
     }
 }

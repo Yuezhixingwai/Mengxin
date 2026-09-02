@@ -655,7 +655,15 @@ public class ChatEngine {
                 }
                 systemPrompt.append("\n\n");
 
-                Map<String, String> personas = fetchContactsSync(token);
+                Map<String, String> personas = new HashMap<>();
+                for (com.zhiyin.logic.data.FriendManager.Friend f : com.zhiyin.logic.data.FriendManager.getCachedFriends()) {
+                    if (f.name != null && !f.name.isEmpty() && f.persona != null && !f.persona.isEmpty()) {
+                        personas.put(f.name, f.persona);
+                    }
+                }
+                if (personas.isEmpty()) {
+                    personas = fetchContactsSync(token);
+                }
                 for (String memberName : g.members) {
                     String persona = personas.get(memberName);
                     if (persona != null && !persona.isEmpty()) {
@@ -664,16 +672,20 @@ public class ChatEngine {
                 }
 
                 if (mentionAll) {
-                    systemPrompt.append("\n用户使用了@所有人，请所有成员都回复这条消息。");
+                    systemPrompt.append("\n用户使用了@所有人，请以下每一位成员都分别回复这条消息，每人一条，必须全部回复、一个都不能少：");
+                    for (int i = 0; i < g.members.length; i++) {
+                        systemPrompt.append(i > 0 ? "、" : " ").append(g.members[i]);
+                    }
+                    systemPrompt.append("。");
                 } else if (!mentionedNames.isEmpty()) {
                     StringBuilder sb = new StringBuilder();
                     for (String n : mentionedNames) {
                         if (sb.length() > 0) sb.append("、");
                         sb.append(n);
                     }
-                    systemPrompt.append("\n用户@了 ").append(sb).append("，请只让被@的成员回复，其他成员保持沉默。");
+                    systemPrompt.append("\n用户@了").append(sb).append("，请只让被@的成员回复，其他成员保持沉默。");
                 }
-                systemPrompt.append("\n请根据每个人的人设来回复群聊消息。回复时请在消息前标明是谁在说话，格式为: [名字] 消息内容");
+                systemPrompt.append("\n请根据每个人的人设以各自的口吻回复群聊消息。每条回复必须以[名字]开头标明说话人，格式为: [名字] 消息内容；多人回复时每人单独一条，不要合并，不要遗漏，不要使用其他格式。");
 
                 JSONObject sys = new JSONObject();
                 sys.put("role", "system");
@@ -711,25 +723,80 @@ public class ChatEngine {
                 if (json.has("choices"))
                     reply = json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "");
 
-                Pattern speakerPattern = Pattern.compile("\\[([^\\]]+)\\]([^\\[]+)");
+                List<String[]> speakerMsgs = new ArrayList<>();
+                Pattern speakerPattern = Pattern.compile("[\\[【]([^\\]】]+)[\\]】]([^\\[【]+)");
                 Matcher spMatcher = speakerPattern.matcher(reply);
                 boolean foundSpeaker = false;
                 boolean firstSpeaker = true;
+                String leadingText = "";
                 while (spMatcher.find()) {
                     foundSpeaker = true;
                     if (firstSpeaker) {
                         firstSpeaker = false;
-                        String leading = reply.substring(0, spMatcher.start()).trim();
-                        if (!leading.isEmpty()) MsgRepo.add(ctx, sid, "ai", leading);
+                        leadingText = reply.substring(0, spMatcher.start()).trim();
                     }
                     String speaker = spMatcher.group(1).trim();
                     String msg = spMatcher.group(2).trim();
-                    if (!msg.isEmpty()) MsgRepo.add(ctx, sid, "ai", "[" + speaker + "] " + msg);
+                    if (!msg.isEmpty()) speakerMsgs.add(new String[]{speaker, msg});
                 }
-                if (!foundSpeaker && !reply.isEmpty()) MsgRepo.add(ctx, sid, "ai", reply);
-                notifyChanged();
-                notifyTyping(false);
-                notifySending(false);
+                if (!foundSpeaker) {
+                    for (String line : reply.split("\\n")) {
+                        String ln = line.trim();
+                        if (ln.isEmpty()) continue;
+                        Matcher lm = Pattern.compile("^([^：:]{1,12})[：:]\\s*(.+)$").matcher(ln);
+                        if (lm.find()) {
+                            String name = lm.group(1).trim();
+                            boolean isMember = false;
+                            for (String mn : g.members) {
+                                if (mn.contains(name) || name.contains(mn)) {
+                                    isMember = true;
+                                    break;
+                                }
+                            }
+                            if (isMember) {
+                                speakerMsgs.add(new String[]{name, lm.group(2).trim()});
+                                foundSpeaker = true;
+                                continue;
+                            }
+                        }
+                        speakerMsgs.add(new String[]{null, ln});
+                        foundSpeaker = true;
+                    }
+                }
+                if (foundSpeaker) {
+                    if (!leadingText.isEmpty()) {
+                        MsgRepo.add(ctx, sid, "ai", leadingText);
+                        notifyChanged();
+                    }
+                    int step = leadingText.isEmpty() ? 0 : 1;
+                    for (String[] sm : speakerMsgs) {
+                        final String speaker = sm[0];
+                        final String msg = sm[1];
+                        List<String> segs = splitText(msg);
+                        for (int i = 0; i < segs.size(); i++) {
+                            final String seg = segs.get(i);
+                            final long delay = step * 600L;
+                            step++;
+                            MAIN.postDelayed(() -> {
+                                if (!seg.isEmpty()) {
+                                    String content = speaker != null ? "[" + speaker + "] " + seg : seg;
+                                    MsgRepo.add(ctx, sid, "ai", content);
+                                    notifyChanged();
+                                }
+                            }, delay);
+                        }
+                    }
+                    final int fStep = step;
+                    MAIN.postDelayed(() -> {
+                        notifyTyping(false);
+                        notifySending(false);
+                    }, fStep * 600L + 80);
+                } else {
+                    if (!reply.isEmpty()) MsgRepo.add(ctx, sid, "ai", reply);
+                    notifyChanged();
+                    notifyTyping(false);
+                    notifySending(false);
+                }
             } catch (Exception e) {
                 MsgRepo.add(ctx, sid, "ai", "[错误] " + e.getMessage());
                 notifyChanged();
