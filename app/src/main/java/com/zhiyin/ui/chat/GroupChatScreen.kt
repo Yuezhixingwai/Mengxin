@@ -249,6 +249,7 @@ fun GroupChatScreen(
             }
         }
         }
+        }
 
         Column(
             modifier = Modifier
