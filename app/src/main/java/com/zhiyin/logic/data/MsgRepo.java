@@ -119,8 +119,7 @@ public class MsgRepo {
                         String rRole = rm.optString("role", "ai");
                         String rContent = rm.optString("content", "");
                         if (rContent == null || rContent.trim().isEmpty()) continue;
-                        if ("app_server".equals(rm.optString("platform", ""))
-                                && isMirrorDuplicate(localArr, rRole, rContent, t)) {
+                        if (isMirrorDuplicate(localArr, rRole, rm.optString("platform", ""), rContent, t)) {
                             continue;
                         }
                         JSONObject o = new JSONObject();
@@ -160,7 +159,7 @@ public class MsgRepo {
                 .replaceAll("\\s+", "");
     }
 
-    private static boolean isMirrorDuplicate(JSONArray localArr, String role, String content, long time) {
+    private static boolean isMirrorDuplicate(JSONArray localArr, String role, String platform, String content, long time) {
         try {
             final String c = content == null ? "" : content.trim();
             if (c.isEmpty()) return false;
@@ -170,21 +169,36 @@ public class MsgRepo {
             final long WINDOW = 90 * 1000L;
             final String target = normalizeMirrorText(c);
             if (target.isEmpty()) return false;
+            List<String> all = new ArrayList<>();
             List<String> win = new ArrayList<>();
             for (int i = 0; i < localArr.length(); i++) {
                 JSONObject o = localArr.getJSONObject(i);
                 if (!role.equals(o.optString("role", ""))) continue;
+                String norm = normalizeMirrorText(o.optString("content", ""));
+                if (norm.isEmpty()) continue;
+                all.add(norm);
                 long lt = o.optLong("time", 0);
                 if (lt > 0 && Math.abs(lt - time) <= WINDOW) {
-                    win.add(normalizeMirrorText(o.optString("content", "")));
+                    win.add(norm);
                 }
             }
-            for (int i = 0; i < win.size(); i++) {
-                StringBuilder acc = new StringBuilder();
-                for (int j = i; j < win.size() && j < i + 8; j++) {
-                    acc.append(win.get(j));
-                    if (acc.toString().trim().equals(target)) return true;
-                    if (acc.length() > target.length()) break;
+
+            for (String w : all) {
+                if (w.equals(target)) return true;
+            }
+            if ("app_server".equals(platform) || "ai".equals(role)) {
+                for (int i = 0; i < win.size(); i++) {
+                    StringBuilder acc = new StringBuilder();
+                    for (int j = i; j < win.size() && j < i + 8; j++) {
+                        acc.append(win.get(j));
+                        if (acc.toString().equals(target)) return true;
+                        if (acc.length() > target.length()) break;
+                    }
+                }
+            }
+            if ("ai".equals(role)) {
+                for (String w : all) {
+                    if (w.length() > target.length() && w.contains(target)) return true;
                 }
             }
         } catch (Exception ignored) {}
