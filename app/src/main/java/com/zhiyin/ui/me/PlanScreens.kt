@@ -184,7 +184,7 @@ fun SubscriptionScreen(
             }
         }
         PayBottomBar(total = total, note = totalNote, buttonText = "立即订阅") {
-            appVm.showToast("订阅支付功能开发中，敬请期待")
+            appVm.showToast("订阅支付")
         }
     }
 }
@@ -262,7 +262,7 @@ fun RechargeScreen(
             }
         }
         PayBottomBar(total = total, note = totalNote, buttonText = "立即支付") {
-            appVm.showToast("充值支付功能开发中，敬请期待")
+            appVm.showToast("充值支付")
         }
     }
 }
@@ -517,13 +517,13 @@ private fun SubscriptionNotes(appVm: AppViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(modifier = Modifier.padding(top = 4.dp)) {
-            TextButton(onClick = { appVm.showToast("自动续费说明：功能开发中") }) {
+            TextButton(onClick = { appVm.showToast("自动续费") }) {
                 Text("自动续费说明", style = MaterialTheme.typography.labelSmall)
             }
-            TextButton(onClick = { appVm.showToast("会员服务协议：功能开发中") }) {
+            TextButton(onClick = { appVm.showToast("会员服务") }) {
                 Text("会员服务协议", style = MaterialTheme.typography.labelSmall)
             }
-            TextButton(onClick = { appVm.showToast("恢复购买：功能开发中") }) {
+            TextButton(onClick = { appVm.showToast("恢复购买") }) {
                 Text("恢复购买", style = MaterialTheme.typography.labelSmall)
             }
         }

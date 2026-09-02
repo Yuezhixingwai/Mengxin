@@ -2,6 +2,7 @@ package com.zhiyin.logic.data;
 import android.content.Context;
 import android.content.SharedPreferences;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import com.zhiyin.logic.net.ApiGateway;
 import java.util.ArrayList;
@@ -86,60 +87,79 @@ public class MsgRepo {
             final String sessionId = sid;
             new Thread(() -> {
                 boolean changed = false;
+                SharedPreferences sp = fCtx.getSharedPreferences("zhiyin_msgs", 0);
+                JSONArray localArr = new JSONArray();
+                try {
+                    localArr = new JSONArray(sp.getString(sessionId, "[]"));
+                } catch (org.json.JSONException e) {
+                    android.util.Log.w("MsgRepo", "parse local failed: " + e.getMessage());
+                }
+                try {
+                    if (healLocalDupes(localArr)) {
+                        sp.edit().putString(sessionId, localArr.toString()).apply();
+                        changed = true;
+                    }
+                } catch (Exception e) {
+                    android.util.Log.w("MsgRepo", "heal local failed: " + e.getMessage());
+                }
                 try {
                     com.zhiyin.logic.net.ApiGateway.ensureMemoryServiceUrl(fCtx);
                     String memUrl = com.zhiyin.logic.net.ApiGateway.getMemoryServiceUrl();
-                    if (memUrl == null || memUrl.isEmpty()) {
-                        android.util.Log.w("MsgRepo", "sync pull skip: memory_service_url empty, sid=" + sessionId);
-                        return;
-                    }
-                    String userId = com.zhiyin.logic.net.ApiGateway.getUserId(fCtx);
-                    if (userId == null || userId.isEmpty()) {
-                        android.util.Log.w("MsgRepo", "sync pull skip: userId empty");
-                        return;
-                    }
-                    String resp = com.zhiyin.logic.net.ApiGateway.memoryRequestSync(
-                        memUrl + "/api/chat/" + java.net.URLEncoder.encode(sessionId, "UTF-8") + "?limit=100",
-                        "GET", null, userId);
-                    org.json.JSONObject json = new org.json.JSONObject(resp);
-                    org.json.JSONArray remoteMsgs = json.optJSONArray("messages");
-                    if (remoteMsgs == null || remoteMsgs.length() == 0) return;
-                    SharedPreferences sp = fCtx.getSharedPreferences("zhiyin_msgs", 0);
-                    JSONArray localArr = new JSONArray(sp.getString(sessionId, "[]"));
-                    java.util.Set<Long> existingTimes = new java.util.HashSet<>();
-                    for (int i = 0; i < localArr.length(); i++) {
-                        existingTimes.add(localArr.getJSONObject(i).optLong("time", 0));
-                    }
-                    for (int i = 0; i < remoteMsgs.length(); i++) {
-                        org.json.JSONObject rm = remoteMsgs.getJSONObject(i);
-                        long t = rm.optLong("time", 0);
-                        if (t > 0 && existingTimes.contains(t)) {
-                            continue;
+                    if (memUrl != null && !memUrl.isEmpty()) {
+                        String userId = com.zhiyin.logic.net.ApiGateway.getUserId(fCtx);
+                        if (userId != null && !userId.isEmpty()) {
+                            String resp = com.zhiyin.logic.net.ApiGateway.memoryRequestSync(
+                                memUrl + "/api/chat/" + java.net.URLEncoder.encode(sessionId, "UTF-8") + "?limit=100",
+                                "GET", null, userId);
+                            org.json.JSONObject json = new org.json.JSONObject(resp);
+                            org.json.JSONArray remoteMsgs = json.optJSONArray("messages");
+                            if (remoteMsgs != null && remoteMsgs.length() > 0) {
+                                java.util.Set<Long> existingTimes = new java.util.HashSet<>();
+                                for (int i = 0; i < localArr.length(); i++) {
+                                    existingTimes.add(localArr.getJSONObject(i).optLong("time", 0));
+                                }
+                                for (int i = 0; i < remoteMsgs.length(); i++) {
+                                    org.json.JSONObject rm = remoteMsgs.getJSONObject(i);
+                                    long t = rm.optLong("time", 0);
+                                    if (t > 0 && existingTimes.contains(t)) {
+                                        continue;
+                                    }
+                                    String rRole = rm.optString("role", "ai");
+                                    if ("assistant".equals(rRole)) rRole = "ai";
+                                    String rContent = rm.optString("content", "");
+                                    if (rContent == null || rContent.trim().isEmpty()) continue;
+                                    JSONObject o = new JSONObject();
+                                    o.put("role", rRole);
+                                    o.put("content", rContent);
+                                    o.put("time", t);
+                                    o.put("read", sessionId.equals(activeSessionId));
+                                    localArr.put(o);
+                                    changed = true;
+                                }
+                            }
                         }
-                        String rRole = rm.optString("role", "ai");
-                        String rContent = rm.optString("content", "");
-                        if (rContent == null || rContent.trim().isEmpty()) continue;
-                        if (isMirrorDuplicate(localArr, rRole, rm.optString("platform", ""), rContent, t)) {
-                            continue;
-                        }
-                        JSONObject o = new JSONObject();
-                        o.put("role", rRole);
-                        o.put("content", rContent);
-                        o.put("time", t);
-                        o.put("read", sessionId.equals(activeSessionId));
-                        localArr.put(o);
+                    }
+                } catch (Exception e) {
+                    android.util.Log.w("MsgRepo", "sync from 9005 failed: " + e.getMessage());
+                }
+                try {
+                    if (healLocalDupes(localArr)) {
                         changed = true;
                     }
-                    if (changed) {
+                } catch (Exception e) {
+                    android.util.Log.w("MsgRepo", "heal after merge failed: " + e.getMessage());
+                }
+                if (changed) {
+                    try {
                         JSONArray sorted = new JSONArray();
                         java.util.List<JSONObject> list = new java.util.ArrayList<>();
                         for (int i = 0; i < localArr.length(); i++) list.add(localArr.getJSONObject(i));
                         java.util.Collections.sort(list, (a, b) -> Long.compare(a.optLong("time", 0), b.optLong("time", 0)));
                         for (JSONObject o : list) sorted.put(o);
                         sp.edit().putString(sessionId, sorted.toString()).apply();
+                    } catch (Exception e) {
+                        android.util.Log.w("MsgRepo", "sort local failed: " + e.getMessage());
                     }
-                } catch (Exception e) {
-                    android.util.Log.w("MsgRepo", "sync from 9005 failed: " + e.getMessage());
                 }
                 final SyncCallback fCb = cb;
                 if (fCb != null) {
@@ -159,50 +179,83 @@ public class MsgRepo {
                 .replaceAll("\\s+", "");
     }
 
-    private static boolean isMirrorDuplicate(JSONArray localArr, String role, String platform, String content, long time) {
-        try {
-            final String c = content == null ? "" : content.trim();
-            if (c.isEmpty()) return false;
-            if ("assistant".equals(role)) role = "ai";
-            if ("user".equals(role) && c.matches("^\\[表情:[^\\]]*\\]$")) return true;
-            if (c.matches("^\\[(CUSTOM_)?STICKER:[^\\]]*\\]$")) return true;
-            final long WINDOW = 90 * 1000L;
-            final String target = normalizeMirrorText(c);
-            if (target.isEmpty()) return false;
-            List<String> all = new ArrayList<>();
-            List<String> win = new ArrayList<>();
-            for (int i = 0; i < localArr.length(); i++) {
-                JSONObject o = localArr.getJSONObject(i);
-                if (!role.equals(o.optString("role", ""))) continue;
-                String norm = normalizeMirrorText(o.optString("content", ""));
-                if (norm.isEmpty()) continue;
-                all.add(norm);
-                long lt = o.optLong("time", 0);
-                if (lt > 0 && Math.abs(lt - time) <= WINDOW) {
-                    win.add(norm);
-                }
+    private static boolean healLocalDupes(JSONArray localArr) throws JSONException {
+        boolean removed = false;
+        for (int i = 0; i < localArr.length(); i++) {
+            JSONObject o = localArr.optJSONObject(i);
+            if (o != null && "assistant".equals(o.optString("role", ""))) {
+                o.put("role", "ai");
+                removed = true;
             }
-
-            for (String w : all) {
-                if (w.equals(target)) return true;
-            }
-            if ("app_server".equals(platform) || "ai".equals(role)) {
-                for (int i = 0; i < win.size(); i++) {
-                    StringBuilder acc = new StringBuilder();
-                    for (int j = i; j < win.size() && j < i + 8; j++) {
-                        acc.append(win.get(j));
-                        if (acc.toString().equals(target)) return true;
-                        if (acc.length() > target.length()) break;
+        }
+        for (int i = 0; i < localArr.length(); i++) {
+            JSONObject full = localArr.optJSONObject(i);
+            if (full == null || !"ai".equals(full.optString("role", ""))) continue;
+            String fullNorm = normalizeMirrorText(full.optString("content", ""));
+            if (fullNorm.length() < 4) continue;
+            boolean matched = false;
+            for (int start = 0; start < localArr.length() && !matched; start++) {
+                if (start == i) continue;
+                StringBuilder acc = new StringBuilder();
+                int pieces = 0;
+                for (int j = start; j < localArr.length(); j++) {
+                    if (j == i) continue;
+                    JSONObject p = localArr.optJSONObject(j);
+                    if (p == null || !"ai".equals(p.optString("role", ""))) continue;
+                    String pn = normalizeMirrorText(p.optString("content", ""));
+                    if (pn.isEmpty()) continue;
+                    acc.append(pn);
+                    pieces++;
+                    if (acc.length() == fullNorm.length()) {
+                        if (pieces >= 2 && acc.toString().equals(fullNorm)) matched = true;
+                        break;
                     }
+                    if (acc.length() > fullNorm.length()) break;
                 }
             }
-            if ("ai".equals(role)) {
-                for (String w : all) {
-                    if (w.length() > target.length() && w.contains(target)) return true;
+            if (matched) {
+                localArr.remove(i);
+                removed = true;
+                i--;
+            }
+        }
+        for (int i = 0; i < localArr.length(); i++) {
+            JSONObject a = localArr.optJSONObject(i);
+            if (a == null) continue;
+            String aNorm = normalizeMirrorText(a.optString("content", ""));
+            if (aNorm.isEmpty()) continue;
+            String aRole = a.optString("role", "");
+            for (int j = localArr.length() - 1; j > i; j--) {
+                JSONObject b = localArr.optJSONObject(j);
+                if (b == null || !aRole.equals(b.optString("role", ""))) continue;
+                if (aNorm.equals(normalizeMirrorText(b.optString("content", "")))) {
+                    localArr.remove(j);
+                    removed = true;
                 }
             }
-        } catch (Exception ignored) {}
-        return false;
+        }
+        boolean hasSticker = false;
+        for (int i = 0; i < localArr.length(); i++) {
+            JSONObject o = localArr.optJSONObject(i);
+            if (o == null) continue;
+            String c = o.optString("content", "");
+            if (c != null && (c.contains("[STICKER:") || c.contains("[CUSTOM_STICKER:"))) {
+                hasSticker = true;
+                break;
+            }
+        }
+        if (hasSticker) {
+            for (int i = localArr.length() - 1; i >= 0; i--) {
+                JSONObject o = localArr.optJSONObject(i);
+                if (o == null) continue;
+                String c = o.optString("content", "").trim();
+                if (c.matches("^\\[表情(:[^\\]]*)?\\]$")) {
+                    localArr.remove(i);
+                    removed = true;
+                }
+            }
+        }
+        return removed;
     }
 
     public static List<String[]> getAll(Context ctx, String sid) {

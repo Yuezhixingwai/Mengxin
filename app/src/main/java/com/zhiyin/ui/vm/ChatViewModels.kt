@@ -161,16 +161,16 @@ class ChatViewModel(
 
     init {
         EngineBus.register(this)
-        enter()
     }
 
     fun enter() {
         MsgRepo.setActiveSession(sessionId)
         MsgRepo.markAllRead(getApplication(), sessionId)
         reload()
-        ChatEngine.loadServerHistory(getApplication(), persona)
-        MsgRepo.syncFromMemoryService(getApplication(), sessionId) { changed ->
-            if (changed) reload()
+        ChatEngine.loadServerHistory(getApplication(), persona) {
+            MsgRepo.syncFromMemoryService(getApplication(), sessionId) { changed ->
+                if (changed) reload()
+            }
         }
     }
 

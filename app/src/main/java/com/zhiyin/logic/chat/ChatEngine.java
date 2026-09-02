@@ -59,6 +59,8 @@ public class ChatEngine {
     private static final long SEARCH_KEY_PROMPT_THROTTLE = 30000L;
 
     public static void setActiveListener(Listener l) { sActive = l; }
+
+    public static void notice(String msg) { notifyNotice(msg); }
     public static boolean isSending() { return sSending; }
 
     private static void notifyChanged() {
@@ -1033,9 +1035,12 @@ public class ChatEngine {
         return raw.trim();
     }
 
-    public static void loadServerHistory(Context ctx, Persona p) {
+    public static void loadServerHistory(Context ctx, Persona p, Runnable onDone) {
         String sid = "persona_" + p.name;
-        if (!MsgRepo.getAll(ctx, sid).isEmpty()) return;
+        if (!MsgRepo.getAll(ctx, sid).isEmpty()) {
+            if (onDone != null) onDone.run();
+            return;
+        }
         new Thread(() -> {
             try {
                 String t = token(ctx);
@@ -1044,16 +1049,23 @@ public class ChatEngine {
                 JSONObject json = new JSONObject(resp);
                 JSONArray history = json.optJSONArray("history");
                 if (history != null && history.length() > 0) {
+                    java.util.Set<String> seen = new java.util.HashSet<>();
                     for (int i = 0; i < history.length(); i++) {
                         JSONObject msg = history.getJSONObject(i);
                         String role = msg.optString("role", "user");
                         String content = msg.optString("content", "");
                         String appRole = "assistant".equals(role) ? "ai" : "user";
+                        String trimmed = content.trim();
+                        if (trimmed.isEmpty()) continue;
+                        String key = appRole + "|" + trimmed;
+                        if (seen.contains(key)) continue;
+                        seen.add(key);
                         MsgRepo.add(ctx, sid, appRole, content);
                     }
                     notifyChanged();
                 }
             } catch (Exception ignored) {}
+            if (onDone != null) onDone.run();
         }).start();
     }
 

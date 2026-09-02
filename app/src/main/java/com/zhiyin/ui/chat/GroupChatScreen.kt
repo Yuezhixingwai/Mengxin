@@ -1,5 +1,12 @@
 package com.zhiyin.ui.chat
 
+import android.view.WindowManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +21,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,7 +35,9 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Redeem
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
@@ -37,6 +47,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -48,16 +59,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zhiyin.ui.components.GroupAvatar
-import com.zhiyin.ui.components.EnsurePayPasswordFlow
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.LingXinSheet
 import com.zhiyin.ui.components.UserAvatar
@@ -82,8 +99,9 @@ fun GroupChatScreen(
     var input by rememberSaveable { mutableStateOf("") }
     var showPlusPanel by remember { mutableStateOf(false) }
     var showRedpacket by remember { mutableStateOf(false) }
-    var payGuard by remember { mutableStateOf<GroupPayGuard?>(null) }
     var showLeave by remember { mutableStateOf(false) }
+    var longEditorOpen by rememberSaveable { mutableStateOf(false) }
+    val isLongInput = input.length >= 80 || input.count { it == '\n' } >= 3
     var actionMsgIndex by remember { mutableStateOf<Int?>(null) }
     var showMenu by remember { mutableStateOf(false) }
 
@@ -178,6 +196,39 @@ fun GroupChatScreen(
                 )
             }
         }
+        }
+
+        AnimatedVisibility(
+            visible = isLongInput,
+            enter = expandVertically(tween(180)) + fadeIn(tween(180)),
+            exit = shrinkVertically(tween(150)) + fadeOut(tween(150)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    TextButton(
+                        onClick = { longEditorOpen = true },
+                        shape = RoundedCornerShape(50),
+                    ) {
+                        Text(
+                            "已输入${input.length}字",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Icon(
+                            Icons.Rounded.OpenInFull,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+            }
         }
 
         Row(
@@ -276,16 +327,23 @@ fun GroupChatScreen(
             onDismiss = { showRedpacket = false },
             onConfirm = { total, count ->
                 showRedpacket = false
-                payGuard = GroupPayGuard(total, count)
+                vm.sendRedpacket(total, count)
             },
         )
     }
 
-    payGuard?.let { g ->
-        EnsurePayPasswordFlow(
-            onContinue = {
-                payGuard = null
-                vm.sendRedpacket(g.total, g.count)
+    if (longEditorOpen) {
+        LongTextEditor(
+            initial = input,
+            onDismiss = { longEditorOpen = false },
+            onApply = {
+                input = it
+                longEditorOpen = false
+            },
+            onSend = { text ->
+                longEditorOpen = false
+                input = ""
+                vm.send(text)
             },
         )
     }
@@ -469,4 +527,93 @@ private fun GroupRedpacketDialog(
     }
 }
 
-private data class GroupPayGuard(val total: Double, val count: Int)
+@Composable
+private fun LongTextEditor(
+    initial: String,
+    onDismiss: () -> Unit,
+    onApply: (String) -> Unit,
+    onSend: (String) -> Unit,
+) {
+    var text by rememberSaveable { mutableStateOf(initial) }
+    val focusRequester = remember { FocusRequester() }
+    val view = LocalView.current
+    SideEffect {
+        (view.parent as? DialogWindowProvider)?.window
+            ?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+    }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(80)
+        focusRequester.requestFocus()
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding(),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) { Text("取消") }
+                    Text(
+                        "长文本编辑",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { onApply(text) }) { Text("完成") }
+                }
+                Text(
+                    "${text.length} 字",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(horizontal = 20.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+                TextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    placeholder = { Text("输入长文本…", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                    ),
+                )
+                Button(
+                    onClick = { if (text.isNotBlank()) onSend(text.trim()) },
+                    enabled = text.isNotBlank(),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .navigationBarsPadding(),
+                ) {
+                    Text("发送")
+                }
+            }
+        }
+    }
+}

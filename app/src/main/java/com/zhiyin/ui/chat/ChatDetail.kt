@@ -463,7 +463,7 @@ fun ChatDetailScreen(
                 }
             },
             actions = {
-                IconButton(onClick = { localToast = "语音通话功能开发中" }) {
+                IconButton(onClick = { localToast = "语音通话" }) {
                     Icon(Icons.Rounded.Call, contentDescription = "语音通话")
                 }
                 IconButton(onClick = { showChatSettings = true }) {

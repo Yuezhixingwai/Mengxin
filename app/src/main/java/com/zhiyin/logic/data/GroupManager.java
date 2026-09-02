@@ -121,12 +121,15 @@ public class GroupManager {
                         com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE + "/api/wallet/redpacket", body.toString(), token);
                 org.json.JSONObject json = new org.json.JSONObject(resp);
                 if (json.has("error")) {
+                    ChatEngine.notice(json.optString("error"));
                     return;
                 }
-                String marker = "(红包 " + ChatEngine.fmtMoney(total) + "元 " + count + "个)";
+                final String marker = "(红包 " + ChatEngine.fmtMoney(total) + "元 " + count + "个)";
                 android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
                 main.post(() -> ChatEngine.groupSend(ctx, g, marker));
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                ChatEngine.notice("发红包失败: " + e.getMessage());
+            }
         }).start();
     }
 }
