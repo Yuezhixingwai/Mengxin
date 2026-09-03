@@ -363,7 +363,7 @@ fun AnnouncementsScreen(appVm: AppViewModel, onBack: () -> Unit) {
                                 Icon(
                                     Icons.Rounded.Campaign,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(Modifier.width(8.dp))
