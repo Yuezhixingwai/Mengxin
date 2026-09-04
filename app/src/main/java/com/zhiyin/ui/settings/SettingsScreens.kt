@@ -516,7 +516,7 @@ fun WalletScreen(appVm: AppViewModel, onBack: () -> Unit) {
                                 Icon(
                                     Icons.Rounded.Key,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = MaterialTheme.colorScheme.onSurface,
                                 )
                             },
                             headlineContent = {
@@ -1478,7 +1478,7 @@ fun AboutScreen(appVm: AppViewModel, onBack: () -> Unit, onOpenAboutUs: () -> Un
                 modifier = Modifier.clickable { onOpenAboutUs() },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 leadingContent = {
-                    Icon(Icons.Rounded.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Rounded.Business, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                 },
                 headlineContent = { Text("关于我们") },
                 trailingContent = {
@@ -1506,7 +1506,7 @@ fun AboutScreen(appVm: AppViewModel, onBack: () -> Unit, onOpenAboutUs: () -> Un
                 },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 leadingContent = {
-                    Icon(Icons.Rounded.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Rounded.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                 },
                 headlineContent = { Text("检查更新") },
                 trailingContent = {
@@ -1577,7 +1577,7 @@ fun AboutUsScreen(onBack: () -> Unit) {
             ListItem(
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 leadingContent = {
-                    Icon(Icons.Rounded.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Rounded.Business, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                 },
                 headlineContent = { Text("软件开发者") },
                 supportingContent = { Text("厦门市月之星外信息技术有限公司") },

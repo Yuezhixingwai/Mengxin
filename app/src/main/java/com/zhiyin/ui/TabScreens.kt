@@ -833,7 +833,7 @@ fun SettingsScreen(
                     Icon(
                         Icons.Rounded.DarkMode,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(22.dp),
                     )
                     Spacer(Modifier.width(14.dp))
@@ -857,7 +857,7 @@ fun SettingsScreen(
                     Icon(
                         Icons.Rounded.Notifications,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(22.dp),
                     )
                     Spacer(Modifier.width(14.dp))
@@ -985,7 +985,7 @@ internal fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
         modifier = Modifier.clickable(onClick = onClick),
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         leadingContent = {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
         },
         headlineContent = { Text(label) },
         trailingContent = {
