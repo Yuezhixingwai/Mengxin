@@ -112,6 +112,7 @@ import kotlinx.coroutines.withContext
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
     dev.chrisbanes.haze.ExperimentalHazeApi::class,
 )
+
 @Composable
 fun GroupChatScreen(
     groupName: String,
