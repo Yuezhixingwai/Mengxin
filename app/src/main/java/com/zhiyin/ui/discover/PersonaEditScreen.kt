@@ -88,7 +88,7 @@ fun PersonaEditScreen(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var form by remember { mutableStateOf(EditForm()) }
-    var categories by remember { mutableStateOf(listOf("女人设", "男人设", "情侣", "动漫", "游戏", "其他")) }
+    var categories by remember { mutableStateOf(listOf("人设女", "人设男", "情侣", "动漫", "游戏", "其他")) }
     var loading by remember { mutableStateOf(personaId != null) }
     var saving by remember { mutableStateOf(false) }
     var cover by remember { mutableStateOf<PendingImage?>(null) }
