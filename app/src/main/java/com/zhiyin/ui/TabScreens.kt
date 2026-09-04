@@ -33,8 +33,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -47,6 +50,9 @@ import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.EmojiEmotions
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Feedback
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Groups2
@@ -294,7 +300,7 @@ private fun FriendListPage(
                                     headlineContent = { Text(friend.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                     supportingContent = {
                                         Text(
-                                            if (official) "官方人设" else (friend.persona ?: ""),
+                                            if (official) "官方人设" else "点击开始聊天",
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
@@ -499,6 +505,8 @@ fun MeScreen(
     onOpenSavedFiles: () -> Unit = {},
     onOpenSubscription: () -> Unit = {},
     onOpenRecharge: () -> Unit = {},
+    onOpenPersonaDetail: (Int) -> Unit = {},
+    onOpenCreatePersona: () -> Unit = {},
 ) {
     val userInfo = appVm.userInfo
     var coinBalance by remember { mutableStateOf<Double?>(null) }
@@ -681,6 +689,14 @@ fun MeScreen(
             }
         }
 
+        StaggeredAppear(delay = 170) {
+            MyPublishedPersonasSection(
+                appVm = appVm,
+                onOpenDetail = onOpenPersonaDetail,
+                onCreate = onOpenCreatePersona,
+            )
+        }
+
         StaggeredAppear(delay = 180) {
             Row(
                 modifier = Modifier
@@ -756,6 +772,106 @@ private fun QuickAction(icon: ImageVector, label: String, onClick: () -> Unit) {
 }
 
 
+@Composable
+private fun MyPublishedPersonasSection(
+    appVm: AppViewModel,
+    onOpenDetail: (Int) -> Unit,
+    onCreate: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var myList by remember { mutableStateOf<List<com.zhiyin.data.PersonaLight>>(emptyList()) }
+    var deleteTarget by remember { mutableStateOf<com.zhiyin.data.PersonaLight?>(null) }
+
+    fun reload() {
+        scope.launch {
+            com.zhiyin.data.PlazaApi.mine().onSuccess { myList = it }
+        }
+    }
+    LaunchedEffect(Unit) { reload() }
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "我发布的人设",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "${myList.size} 个",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "+ 发布",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable(onClick = onCreate).padding(4.dp),
+            )
+        }
+        if (myList.isEmpty()) {
+            Text(
+                "还没有发布过人设，点右上角发布创建",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        } else {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp)) {
+                items(myList, key = { it.id }) { p ->
+                    Box {
+                        com.zhiyin.ui.discover.PersonaCoverCard(
+                            p = p,
+                            coverHeight = 150,
+                            onClick = { onOpenDetail(p.id) },
+                            modifier = Modifier.width(150.dp).padding(end = 10.dp),
+                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 6.dp, end = 16.dp)
+                                .clickable { deleteTarget = p },
+                        ) {
+                            Icon(
+                                Icons.Rounded.Delete,
+                                contentDescription = "删除人设",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(6.dp).size(16.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    deleteTarget?.let { p ->
+        LingXinDialog(
+            onDismiss = { deleteTarget = null },
+            title = "删除人设",
+            text = "确定删除「${p.name}」吗？广场中相关的点赞、收藏、评论将一并清除，无法恢复。",
+            confirmText = "删除",
+            danger = true,
+            onConfirm = {
+                deleteTarget = null
+                scope.launch {
+                    com.zhiyin.data.PlazaApi.delete(p.id).onSuccess {
+                        appVm.showToast("已删除")
+                        reload()
+                    }.onFailure { appVm.showToast(it.message ?: "删除失败") }
+                }
+            },
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -770,6 +886,8 @@ fun SettingsScreen(
     onOpenQuota: () -> Unit = {},
     onOpenSearchSettings: () -> Unit = {},
     onOpenAnnouncements: () -> Unit = {},
+    onOpenPreferences: () -> Unit = {},
+    onOpenStickerShop: () -> Unit = {},
 ) {
     val darkTheme by appVm.darkMode.collectAsState()
     val notifyEnabled by appVm.notifyEnabled.collectAsState()
@@ -872,6 +990,14 @@ fun SettingsScreen(
 
             CardContainer {
                 MenuRow(Icons.Rounded.Palette, "个性装扮", onClick = { showThemePicker = true })
+            }
+
+            CardContainer {
+                Column {
+                    MenuRow(Icons.Rounded.Favorite, "喜好设置", onClick = onOpenPreferences)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    MenuRow(Icons.Rounded.EmojiEmotions, "表情包商城", onClick = onOpenStickerShop)
+                }
             }
 
             CardContainer {

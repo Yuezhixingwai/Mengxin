@@ -74,6 +74,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Listene
     fun loadFriends(onDone: (List<FriendManager.Friend>) -> Unit = {}) {
         val token = AppSession.token()
         if (token.isEmpty()) return
+        com.zhiyin.logic.util.StickerManager.syncDefaultPackMeta(getApplication())
         FriendManager.getAll(token, object : FriendManager.Callback {
             override fun onResult(list: MutableList<FriendManager.Friend>?) {
                 friends = list ?: emptyList()

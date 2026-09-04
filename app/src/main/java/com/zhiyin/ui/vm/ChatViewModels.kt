@@ -67,9 +67,7 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
                 for (f in friends) {
                     val sid = "persona_${f.name}"
                     val msgs = MsgRepo.getAll(ctx, sid)
-                    val previewDefault =
-                        if (PersonaManager.isOfficial(ctx, f.name)) ""
-                        else (f.persona ?: "")
+                    val previewDefault = "打个招呼开始聊天吧"
                     val lastRaw = msgs.lastOrNull()?.get(1)
                     val preview = if (lastRaw != null) ChatEngine.previewText(lastRaw) else previewDefault
                     val time = msgs.lastOrNull()?.get(2)?.toLongOrNull() ?: 0L

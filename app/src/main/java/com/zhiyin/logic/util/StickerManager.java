@@ -3,21 +3,25 @@ package com.zhiyin.logic.util;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.io.File;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
 public class StickerManager {
     private static List<StickerItem> stickers;
-    private static Random random = new Random();
+    private static int defaultPackId = 1;
+    private static final Random random = new Random();
 
     public static class StickerItem {
         public String description;
         public String fileName;
-        public String emotion;
+        public int packId = 1;
     }
+
+    public static int getDefaultPackId() { return defaultPackId; }
 
     public static String getStickerFileNameForText(String text) {
         if (stickers == null || stickers.isEmpty() || text == null || text.isEmpty()) return null;
@@ -36,7 +40,7 @@ public class StickerManager {
             return stickers.isEmpty() ? null : stickers.get(random.nextInt(stickers.size())).fileName;
         }
         String[] candidateNames = EMOTION_MAP[bestIdx][1].split(",");
-        java.util.List<StickerItem> matches = new java.util.ArrayList<>();
+        List<StickerItem> matches = new ArrayList<>();
         for (StickerItem s : stickers) {
             for (String name : candidateNames) {
                 if (s.description != null && s.description.contains(name.trim())) {
@@ -68,58 +72,261 @@ public class StickerManager {
     public static void init(Context context) {
         if (stickers != null) return;
         stickers = new ArrayList<>();
+        loadMeta(context);
+    }
+
+    private static File metaFile(Context c) {
+        return new File(c.getFilesDir(), "stickers/meta.json");
+    }
+
+    private static void loadMeta(Context c) {
         try {
-            InputStream is = context.getAssets().open("stickers/custom_stickers.json");
-            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int len;
-            while ((len = is.read(buf)) != -1) baos.write(buf, 0, len);
-            is.close();
-            String json = baos.toString("UTF-8");
-            org.json.JSONArray arr = new org.json.JSONArray(json);
+            File f = metaFile(c);
+            if (!f.exists()) return;
+            String json = new String(readBytes(f), "UTF-8");
+            parseMeta(json);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void parseMeta(String json) {
+        try {
+            JSONObject obj = new JSONObject(json);
+            defaultPackId = obj.optInt("packId", 1);
+            JSONArray arr = obj.optJSONArray("items");
+            if (arr == null) return;
+            List<StickerItem> list = new ArrayList<>();
             for (int i = 0; i < arr.length(); i++) {
-                org.json.JSONObject obj = arr.getJSONObject(i);
+                JSONObject it = arr.getJSONObject(i);
                 StickerItem item = new StickerItem();
-                item.description = obj.optString("description", "");
-                item.fileName = obj.optString("fileName", "");
-                if (!item.fileName.isEmpty()) stickers.add(item);
+                item.description = it.optString("description", "");
+                item.fileName = it.optString("fileName", "");
+                item.packId = it.optInt("packId", defaultPackId);
+                if (!item.fileName.isEmpty()) list.add(item);
             }
-        } catch (Exception e) {
-            stickers.clear();
+            if (!list.isEmpty()) stickers = list;
+        } catch (Exception ignored) {
         }
     }
 
-    public static Bitmap getRandomSticker(Context context) {
-        if (stickers == null || stickers.isEmpty()) return null;
-        StickerItem item = stickers.get(random.nextInt(stickers.size()));
+    private static void saveMeta(Context c, String json) {
         try {
-            InputStream is = context.getAssets().open("stickers/" + item.fileName);
-            Bitmap bmp = BitmapFactory.decodeStream(is);
-            is.close();
-            return bmp;
+            File f = metaFile(c);
+            if (!f.getParentFile().exists()) f.getParentFile().mkdirs();
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
+            fos.write(json.getBytes("UTF-8"));
+            fos.close();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static byte[] readBytes(File f) throws Exception {
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        java.io.FileInputStream fis = new java.io.FileInputStream(f);
+        byte[] buf = new byte[4096];
+        int len;
+        while ((len = fis.read(buf)) != -1) baos.write(buf, 0, len);
+        fis.close();
+        return baos.toByteArray();
+    }
+
+    public static void syncDefaultPackMeta(final Context c) {
+        new Thread(() -> {
+            try {
+                String packsJson = com.zhiyin.logic.net.ApiGateway.requestSync(
+                    com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE + "/api/sticker-packs", "GET", null,
+                    com.zhiyin.data.AppSession.INSTANCE.token());
+                JSONObject pj = new JSONObject(packsJson);
+                JSONArray packs = pj.optJSONArray("packs");
+                if (packs == null) return;
+                int pid = -1;
+                for (int i = 0; i < packs.length(); i++) {
+                    JSONObject p = packs.getJSONObject(i);
+                    if (p.optBoolean("is_default")) { pid = p.optInt("id"); break; }
+                }
+                if (pid <= 0) return;
+                String detailJson = com.zhiyin.logic.net.ApiGateway.requestSync(
+                    com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE + "/api/sticker-packs/" + pid, "GET", null,
+                    com.zhiyin.data.AppSession.INSTANCE.token());
+                JSONObject d = new JSONObject(detailJson);
+                JSONArray items = d.optJSONArray("items");
+                JSONObject meta = new JSONObject();
+                meta.put("packId", pid);
+                JSONArray arr = new JSONArray();
+                if (items != null) {
+                    for (int i = 0; i < items.length(); i++) {
+                        JSONObject it = items.getJSONObject(i);
+                        JSONObject o = new JSONObject();
+                        o.put("fileName", it.optString("name", ""));
+                        o.put("description", it.optString("description", ""));
+                        o.put("packId", pid);
+                        arr.put(o);
+                    }
+                }
+                meta.put("items", arr);
+                defaultPackId = pid;
+                parseMeta(meta.toString());
+                saveMeta(c, meta.toString());
+            } catch (Exception ignored) {
+            }
+        }).start();
+    }
+
+    private static File packsDir(Context c) {
+        File d = new File(c.getFilesDir(), "stickers/packs");
+        if (!d.exists()) d.mkdirs();
+        return d;
+    }
+
+    public static File stickerFileFor(Context c, String name) {
+        if (name == null) return null;
+        File root = packsDir(c);
+        File[] packDirs = root.listFiles();
+        if (packDirs == null) return null;
+        for (File pd : packDirs) {
+            if (!pd.isDirectory()) continue;
+            File f = new File(pd, name);
+            if (f.exists()) return f;
+        }
+        return null;
+    }
+
+    public static Bitmap getStickerByName(Context c, String name) {
+        File f = stickerFileFor(c, name);
+        if (f == null) return null;
+        try {
+            return BitmapFactory.decodeFile(f.getAbsolutePath());
         } catch (Exception e) {
             return null;
         }
     }
 
-    public static Bitmap getStickerByName(Context context, String fileName) {
+    public static void ensureSticker(final Context c, final String name) {
+        if (name == null || stickerFileFor(c, name) != null) return;
+        new Thread(() -> {
+            try {
+                String url = com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE
+                    + "/api/sticker-packs/file/" + defaultPackId + "/" + java.net.URLEncoder.encode(name, "UTF-8");
+                byte[] data = com.zhiyin.logic.net.ApiGateway.getRaw(url, c);
+                if (data == null || data.length == 0) return;
+                File dir = new File(packsDir(c), String.valueOf(defaultPackId));
+                if (!dir.exists()) dir.mkdirs();
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(new File(dir, name));
+                fos.write(data);
+                fos.close();
+            } catch (Exception ignored) {
+            }
+        }).start();
+    }
+
+    public static void cachePackImages(final Context c, final int packId, final List<String> names) {
+        new Thread(() -> {
+            File dir = new File(packsDir(c), String.valueOf(packId));
+            if (!dir.exists()) dir.mkdirs();
+            for (final String name : names) {
+                try {
+                    if (new File(dir, name).exists()) continue;
+                    String url = com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE
+                        + "/api/sticker-packs/file/" + packId + "/" + java.net.URLEncoder.encode(name, "UTF-8");
+                    byte[] data = com.zhiyin.logic.net.ApiGateway.getRaw(url, c);
+                    if (data == null) continue;
+                    java.io.FileOutputStream fos = new java.io.FileOutputStream(new File(dir, name));
+                    fos.write(data);
+                    fos.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }).start();
+    }
+
+    public static Bitmap loadStickerBitmap(Context c, int packId, String name) {
+        if (name == null) return null;
+        File f = stickerFileFor(c, name);
+        if (f != null) {
+            try { return BitmapFactory.decodeFile(f.getAbsolutePath()); } catch (Exception ignored) {}
+        }
         try {
-            InputStream is = context.getAssets().open("stickers/" + fileName);
-            Bitmap bmp = BitmapFactory.decodeStream(is);
-            is.close();
-            return bmp;
-        } catch (Exception e) {
+            String url = com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE
+                + "/api/sticker-packs/file/" + packId + "/" + java.net.URLEncoder.encode(name, "UTF-8");
+            byte[] data = com.zhiyin.logic.net.ApiGateway.getRaw(url, c);
+            if (data == null || data.length == 0) return null;
+            File dir = new File(packsDir(c), String.valueOf(packId));
+            if (!dir.exists()) dir.mkdirs();
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(new File(dir, name));
+            fos.write(data);
+            fos.close();
+            return BitmapFactory.decodeByteArray(data, 0, data.length);
+        } catch (Exception ignored) {
             return null;
+        }
+    }
+
+    public static void mergePackMeta(Context c, int packId, String itemsJson) {
+        try {
+            JSONArray incoming = new JSONArray(itemsJson);
+            List<StickerItem> merged = new ArrayList<>(stickers != null ? stickers : new ArrayList<>());
+            java.util.Set<String> names = new java.util.HashSet<>();
+            for (StickerItem s : merged) names.add(s.fileName);
+            for (int i = 0; i < incoming.length(); i++) {
+                JSONObject it = incoming.getJSONObject(i);
+                String fn = it.optString("fileName", "");
+                if (fn.isEmpty() || names.contains(fn)) continue;
+                StickerItem item = new StickerItem();
+                item.fileName = fn;
+                item.description = it.optString("description", "");
+                item.packId = packId;
+                merged.add(item);
+                names.add(fn);
+            }
+            stickers = merged;
+            JSONObject meta = new JSONObject();
+            meta.put("packId", defaultPackId);
+            JSONArray arr = new JSONArray();
+            for (StickerItem s : merged) {
+                JSONObject o = new JSONObject();
+                o.put("fileName", s.fileName);
+                o.put("description", s.description == null ? "" : s.description);
+                o.put("packId", s.packId);
+                arr.put(o);
+            }
+            meta.put("items", arr);
+            saveMeta(c, meta.toString());
+        } catch (Exception ignored) {
+        }
+    }
+
+    public static void removePack(Context c, int packId, List<String> names) {
+        try {
+            File dir = new File(packsDir(c), String.valueOf(packId));
+            if (dir.exists()) {
+                File[] files = dir.listFiles();
+                if (files != null) for (File f : files) f.delete();
+                dir.delete();
+            }
+            if (stickers != null && names != null) {
+                java.util.Set<String> rm = new java.util.HashSet<>(names);
+                List<StickerItem> kept = new ArrayList<>();
+                for (StickerItem s : stickers) if (!rm.contains(s.fileName)) kept.add(s);
+                stickers = kept;
+                JSONObject meta = new JSONObject();
+                meta.put("packId", defaultPackId);
+                JSONArray arr = new JSONArray();
+                for (StickerItem s : kept) {
+                    JSONObject o = new JSONObject();
+                    o.put("fileName", s.fileName);
+                    o.put("description", s.description == null ? "" : s.description);
+                    o.put("packId", s.packId);
+                    arr.put(o);
+                }
+                meta.put("items", arr);
+                saveMeta(c, meta.toString());
+            }
+        } catch (Exception ignored) {
         }
     }
 
     public static List<StickerItem> getAllStickers() {
         return stickers != null ? stickers : new ArrayList<>();
-    }
-
-    public static StickerItem getRandomStickerItem() {
-        if (stickers == null || stickers.isEmpty()) return null;
-        return stickers.get(random.nextInt(stickers.size()));
     }
 
     public static StickerItem findStickerItem(String fileName) {
@@ -192,8 +399,8 @@ public class StickerManager {
         return new File(customDir(c), name);
     }
 
-    public static java.util.List<String> listCustomStickers(Context c) {
-        java.util.List<String> list = new ArrayList<>();
+    public static List<String> listCustomStickers(Context c) {
+        List<String> list = new ArrayList<>();
         File[] files = customDir(c).listFiles((dir, name) -> name.startsWith("cs_") && name.endsWith(".png"));
         if (files != null) {
             java.util.Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));

@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -42,10 +43,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -145,6 +148,7 @@ private enum class MainTab(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
 ) {
+    Discover("发现", Icons.Filled.Explore, Icons.Outlined.Explore),
     Chats("会话", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline),
     Contacts("联系人", Icons.Filled.Groups, Icons.Outlined.Groups),
     Me("我的", Icons.Filled.Person, Icons.Outlined.Person),
@@ -182,6 +186,14 @@ sealed interface Overlay {
     data object Favorites : Overlay
     data object SavedImages : Overlay
     data object SavedFiles : Overlay
+    data class PersonaDetail(val personaId: Int) : Overlay
+    data class PersonaEdit(val personaId: Int?) : Overlay
+    data object PersonaSearch : Overlay
+    data object HotList : Overlay
+    data object MessageCenter : Overlay
+    data object StickerShop : Overlay
+    data class AuthorPage(val userId: Int) : Overlay
+    data object Preferences : Overlay
 }
 
 internal val BottomNavBarHeight: Dp = 60.dp
@@ -260,8 +272,9 @@ fun MainScaffold(appVm: AppViewModel) {
                     onOpenMe = {
                         overlayStack.clear()
                         navForward = false
-                        currentTab = 2
+                        currentTab = 3
                     },
+                    onOpenStickerShop = { push(Overlay.StickerShop) },
                 )
                 is Overlay.Group -> GroupChatScreen(
                     groupName = o.name,
@@ -280,10 +293,18 @@ fun MainScaffold(appVm: AppViewModel) {
                     onOpenQuota = { push(Overlay.Quota) },
                     onOpenSearchSettings = { push(Overlay.SearchSettings) },
                     onOpenAnnouncements = { push(Overlay.Announcements) },
+                    onOpenPreferences = { push(Overlay.Preferences) },
+                    onOpenStickerShop = { push(Overlay.StickerShop) },
                 )
                 Overlay.AddFriend -> AddFriendScreen(
                     appVm = appVm,
                     onBack = { pop() },
+                    onOpenPlaza = {
+                        overlayStack.clear()
+                        navForward = false
+                        currentTab = 0
+                    },
+                    onOpenCreate = { push(Overlay.PersonaEdit(null)) },
                 )
                 is Overlay.FriendSettings -> FriendSettingsScreen(
                     friend = o.friend,
@@ -442,6 +463,49 @@ fun MainScaffold(appVm: AppViewModel) {
                         push(Overlay.Moments)
                     },
                 )
+                is Overlay.PersonaDetail -> com.zhiyin.ui.discover.PersonaDetailScreen(
+                    appVm = appVm,
+                    personaId = o.personaId,
+                    onBack = { pop() },
+                    onOpenAuthor = { push(Overlay.AuthorPage(it)) },
+                    onEdit = { push(Overlay.PersonaEdit(it)) },
+                )
+                Overlay.PersonaSearch -> com.zhiyin.ui.discover.PersonaSearchScreen(
+                    appVm = appVm,
+                    onBack = { pop() },
+                    onOpenDetail = { push(Overlay.PersonaDetail(it)) },
+                )
+                is Overlay.PersonaEdit -> com.zhiyin.ui.discover.PersonaEditScreen(
+                    appVm = appVm,
+                    personaId = o.personaId,
+                    onBack = { pop() },
+                    onSaved = { pop() },
+                )
+                Overlay.HotList -> com.zhiyin.ui.discover.HotListScreen(
+                    appVm = appVm,
+                    onBack = { pop() },
+                    onOpenDetail = { push(Overlay.PersonaDetail(it)) },
+                )
+                Overlay.MessageCenter -> com.zhiyin.ui.discover.MessageCenterScreen(
+                    appVm = appVm,
+                    onBack = { pop() },
+                    onOpenPersona = { push(Overlay.PersonaDetail(it)) },
+                )
+                Overlay.StickerShop -> com.zhiyin.ui.discover.StickerShopScreen(
+                    appVm = appVm,
+                    onBack = { pop() },
+                    onAcquired = { com.zhiyin.logic.util.StickerManager.syncDefaultPackMeta(appVm.getApplication()) },
+                )
+                is Overlay.AuthorPage -> com.zhiyin.ui.discover.AuthorScreen(
+                    appVm = appVm,
+                    authorId = o.userId,
+                    onBack = { pop() },
+                    onOpenDetail = { push(Overlay.PersonaDetail(it)) },
+                )
+                Overlay.Preferences -> com.zhiyin.ui.settings.PreferencesScreen(
+                    appVm = appVm,
+                    onBack = { pop() },
+                )
                 null -> MainContent(
                     appVm = appVm,
                     chatListVm = chatListVm,
@@ -472,6 +536,13 @@ fun MainScaffold(appVm: AppViewModel) {
                     onOpenSavedFiles = { push(Overlay.SavedFiles) },
                     onOpenSubscription = { push(Overlay.Subscription) },
                     onOpenRecharge = { push(Overlay.Recharge) },
+                    onOpenPersonaDetail = { push(Overlay.PersonaDetail(it)) },
+                    onOpenHotList = { push(Overlay.HotList) },
+                    onOpenMessageCenter = { push(Overlay.MessageCenter) },
+                    onOpenStickerShop = { push(Overlay.StickerShop) },
+                    onOpenCreatePersona = { push(Overlay.PersonaEdit(null)) },
+                    onOpenPreferences = { push(Overlay.Preferences) },
+                    onOpenPlazaSearch = { push(Overlay.PersonaSearch) },
                 )
             }
         }
@@ -687,6 +758,13 @@ private fun MainContent(
     onOpenSavedFiles: () -> Unit = {},
     onOpenSubscription: () -> Unit = {},
     onOpenRecharge: () -> Unit = {},
+    onOpenPersonaDetail: (Int) -> Unit = {},
+    onOpenHotList: () -> Unit = {},
+    onOpenMessageCenter: () -> Unit = {},
+    onOpenStickerShop: () -> Unit = {},
+    onOpenCreatePersona: () -> Unit = {},
+    onOpenPreferences: () -> Unit = {},
+    onOpenPlazaSearch: () -> Unit = {},
 ) {
     var showAddMenu by remember { mutableStateOf(false) }
     var removeConv by remember { mutableStateOf<com.zhiyin.ui.vm.UConv?>(null) }
@@ -701,6 +779,7 @@ private fun MainContent(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             when (MainTab.entries[currentTab]) {
+                MainTab.Discover -> MainTopAppBar("发现")
                 MainTab.Chats -> MainTopAppBar(
                     title = "灵心",
                     onSearch = onSearch,
@@ -712,7 +791,7 @@ private fun MainContent(
         },
         floatingActionButton = {
             AnimatedVisibility(
-                visible = currentTab == 0,
+                visible = currentTab == 1,
                 enter = fadeIn(tween(200)) + scaleIn(
                     initialScale = 0.6f,
                     animationSpec = tween(200, easing = FastOutSlowInEasing),
@@ -749,13 +828,21 @@ private fun MainContent(
                 label = "tab",
             ) { tab ->
                 when (tab) {
-                    0 -> ChatListScreen(
+                    0 -> com.zhiyin.ui.discover.DiscoverScreen(
+                        appVm = appVm,
+                        onOpenDetail = onOpenPersonaDetail,
+                        onOpenHotList = onOpenHotList,
+                        onOpenMessageCenter = onOpenMessageCenter,
+                        onOpenCreate = onOpenCreatePersona,
+                        onOpenSearch = onOpenPlazaSearch,
+                    )
+                    1 -> ChatListScreen(
                         conversations = conversations,
                         onConversation = onOpenConversation,
                         onRefresh = { chatListVm.refresh() },
                         onRemoveConversation = { removeConv = it },
                     )
-                    1 -> ContactsScreen(
+                    2 -> ContactsScreen(
                         appVm = appVm,
                         onOpenFriendChat = onOpenFriendChat,
                         onOpenFriend = onOpenFriend,
@@ -774,6 +861,8 @@ private fun MainContent(
                         onOpenSavedFiles = onOpenSavedFiles,
                         onOpenSubscription = onOpenSubscription,
                         onOpenRecharge = onOpenRecharge,
+                        onOpenPersonaDetail = onOpenPersonaDetail,
+                        onOpenCreatePersona = onOpenCreatePersona,
                     )
                 }
             }

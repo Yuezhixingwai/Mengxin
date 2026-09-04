@@ -62,4 +62,27 @@ object MsgNotifications {
             notification
         )
     }
+
+    fun showPlazaNotify(context: Context, unread: Int) {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pending = PendingIntent.getActivity(
+            context,
+            7701,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification: Notification = NotificationCompat.Builder(context, ZhiYinApp.CHANNEL_AI_REPLY)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("灵心消息")
+            .setContentText("你有 $unread 条新消息")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .build()
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        nm?.notify(7799, notification)
+    }
 }

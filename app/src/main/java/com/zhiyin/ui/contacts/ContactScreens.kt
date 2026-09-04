@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,12 +28,14 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -42,9 +45,11 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -53,9 +58,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -73,17 +80,46 @@ import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.PersonaAvatar
 import com.zhiyin.ui.vm.AppViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.concurrent.thread
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddFriendScreen(appVm: AppViewModel, onBack: () -> Unit) {
+fun AddFriendScreen(
+    appVm: AppViewModel,
+    onBack: () -> Unit,
+    onOpenPlaza: () -> Unit,
+    onOpenCreate: () -> Unit,
+) {
     val context = LocalContext.current
-    val personas = remember { PersonaManager.getAll(context) }
-    var showCustom by remember { mutableStateOf(false) }
-    var addedNames by remember { mutableStateOf(setOf<String>()) }
+    var tab by remember { mutableStateOf("plaza") }
+    var mine by remember { mutableStateOf<List<com.zhiyin.data.PersonaLight>>(emptyList()) }
+    var favs by remember { mutableStateOf<List<com.zhiyin.data.PersonaLight>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
     var importResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun loadLists() {
+        if (loading) return
+        loading = true
+        scope.launch {
+            com.zhiyin.data.PlazaApi.mine().onSuccess { mine = it }
+            com.zhiyin.data.PlazaApi.favorites().onSuccess { favs = it }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { loadLists() }
+
+    fun addPersona(p: com.zhiyin.data.PersonaLight) {
+        scope.launch {
+            com.zhiyin.data.PlazaApi.addToContacts(p.id).onSuccess {
+                appVm.showToast("已添加${p.name}，去会话页聊天吧")
+                appVm.loadFriends()
+            }.onFailure { appVm.showToast(it.message ?: "添加失败") }
+        }
+    }
 
     val doubaoImport = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -141,26 +177,35 @@ fun AddFriendScreen(appVm: AppViewModel, onBack: () -> Unit) {
             },
         )
 
-        RubberBandBox(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp)) {
-            item {
-                ListItem(
-                    modifier = Modifier.clickable { showCustom = true },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    leadingContent = {
-                        Surface(
-                            shape = RoundedCornerShape(13.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                            modifier = Modifier.size(46.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    },
-                    headlineContent = { Text("创建自定义人设") },
-                    supportingContent = { Text("为 TA 编写专属人设描述") },
+        ScrollableTabRow(
+            selectedTabIndex = when (tab) {
+                "plaza" -> 0
+                "mine" -> 1
+                "favs" -> 2
+                else -> 3
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            edgePadding = 12.dp,
+        ) {
+            listOf("广场" to "plaza", "我发布的" to "mine", "我收藏的" to "favs", "导入" to "import").forEachIndexed { i, (label, key) ->
+                Tab(
+                    selected = tab == key,
+                    onClick = { tab = key },
+                    text = { Text(label, fontWeight = if (tab == key) FontWeight.Bold else FontWeight.Normal) },
                 )
+            }
+        }
+
+        when (tab) {
+            "mine" -> {
+                if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                else PlazaContactList(mine, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
+            }
+            "favs" -> {
+                if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                else PlazaContactList(favs, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
+            }
+            "import" -> Column {
                 ListItem(
                     modifier = Modifier.clickable { doubaoImport.launch("application/json") },
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
@@ -179,122 +224,41 @@ fun AddFriendScreen(appVm: AppViewModel, onBack: () -> Unit) {
                     supportingContent = { Text("从豆包导出的JSON文件一键导入") },
                 )
             }
-            item {
-                Text(
-                    "官方人设",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                )
-            }
-            if (personas.isEmpty()) {
-                item { EmptyHint("人设库为空") }
-            }
-            items(personas, key = { it.name }) { persona ->
-                val already = persona.name in addedNames || appVm.friends.any { it.name == persona.name }
+            else -> Column {
                 ListItem(
+                    modifier = Modifier.clickable(onClick = onOpenPlaza),
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    leadingContent = { PersonaAvatar(-1, persona.name, 46.dp) },
-                    headlineContent = { Text(persona.name) },
-                    supportingContent = {
-                        Text(
-                            persona.keywords.ifEmpty { persona.description }.take(60),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    trailingContent = {
-                        Button(
-                            onClick = {
-                                val token = AppSession.token()
-                                FriendManager.add(token, persona.name, persona.description, "", object : com.zhiyin.logic.net.ApiGateway.Callback {
-                                    override fun onSuccess(response: String) {
-                                        appVm.loadFriends { friends ->
-                                            if (friends.any { it.name == persona.name }) {
-                                                addedNames = addedNames + persona.name
-                                                appVm.showToast("已添加 ${persona.name}")
-                                            } else {
-                                                appVm.showToast("添加失败")
-                                            }
-                                        }
-                                    }
-
-                                    override fun onError(error: String?) {
-                                        appVm.showToast("添加失败: ${error ?: ""}")
-                                    }
-                                })
-                            },
-                            enabled = !already,
-                            shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    leadingContent = {
+                        Surface(
+                            shape = RoundedCornerShape(13.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                            modifier = Modifier.size(46.dp),
                         ) {
-                            Text(if (already) "已添加" else "添加")
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Explore, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     },
+                    headlineContent = { Text("去人设广场挑选") },
+                    supportingContent = { Text("热门榜、分类、推荐，发现喜欢的人设") },
                 )
-            }
-        }
-        }
-    }
-
-    if (showCustom) {
-        var name by remember { mutableStateOf("") }
-        var persona by remember { mutableStateOf("") }
-        var error by remember { mutableStateOf<String?>(null) }
-        LingXinDialog(
-            onDismiss = { showCustom = false },
-            title = "自定义人设",
-            confirmText = "添加",
-            onConfirm = {
-                val n = name.trim()
-                if (n.isEmpty()) error = "请输入名字"
-                else {
-                    showCustom = false
-                    val token = AppSession.token()
-                    FriendManager.add(token, n, persona.trim(), "", object : com.zhiyin.logic.net.ApiGateway.Callback {
-                        override fun onSuccess(response: String) {
-                            appVm.loadFriends()
-                            appVm.showToast("已添加 $n")
+                ListItem(
+                    modifier = Modifier.clickable(onClick = onOpenCreate),
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                    leadingContent = {
+                        Surface(
+                            shape = RoundedCornerShape(13.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                            modifier = Modifier.size(46.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
                         }
-
-                        override fun onError(error: String?) {
-                            appVm.showToast("添加失败: ${error ?: ""}")
-                        }
-                    })
-                }
-            },
-        ) {
-            Spacer(Modifier.height(16.dp))
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                placeholder = { Text("名字") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedBorderColor = Color.Transparent,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = persona,
-                onValueChange = { persona = it },
-                placeholder = { Text("人设描述（性格、说话方式等）") },
-                minLines = 3,
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedBorderColor = Color.Transparent,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            error?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    },
+                    headlineContent = { Text("创建自定义人设") },
+                    supportingContent = { Text("设定名称、人设、图片，可选择公开分享") },
+                )
             }
         }
     }
@@ -307,6 +271,71 @@ fun AddFriendScreen(appVm: AppViewModel, onBack: () -> Unit) {
             confirmText = "确定",
             dismissText = null,
         )
+    }
+}
+
+@Composable
+private fun PlazaContactList(
+    list: List<com.zhiyin.data.PersonaLight>,
+    appVm: AppViewModel,
+    onAdd: (com.zhiyin.data.PersonaLight) -> Unit,
+    onOpenCreate: () -> Unit,
+) {
+    if (list.isEmpty()) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text("这里还没有人设", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "去创建或发布一个吧",
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = onOpenCreate).padding(6.dp),
+            )
+        }
+        return
+    }
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp)) {
+        items(list, key = { it.id }) { p ->
+            val already = appVm.friends.any { it.name == p.name }
+            ListItem(
+                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                leadingContent = {
+                    Box(
+                        Modifier.size(46.dp).clip(RoundedCornerShape(23.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (p.avatarUrl.isNotEmpty()) {
+                            com.zhiyin.ui.components.RemoteImage(url = p.avatarUrl, contentDescription = p.name, modifier = Modifier.fillMaxSize(), placeholder = {
+                                com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(46.dp), size = 46.dp, shape = RoundedCornerShape(23.dp))
+                            })
+                        } else {
+                            com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(46.dp), size = 46.dp, shape = RoundedCornerShape(23.dp))
+                        }
+                    }
+                },
+                headlineContent = { Text(p.name) },
+                supportingContent = {
+                    Text(
+                        p.keywords.ifEmpty { p.descriptionLight }.take(60),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                trailingContent = {
+                    Button(
+                        onClick = { onAdd(p) },
+                        enabled = !already,
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    ) {
+                        Text(if (already) "已添加" else "添加")
+                    }
+                },
+            )
+        }
     }
 }
 

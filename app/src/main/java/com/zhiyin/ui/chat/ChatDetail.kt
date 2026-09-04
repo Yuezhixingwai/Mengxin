@@ -219,6 +219,7 @@ fun ChatDetailScreen(
     onOpenFriendSettings: (Int) -> Unit,
     onOpenSearchSettings: () -> Unit = {},
     onOpenMe: () -> Unit = {},
+    onOpenStickerShop: () -> Unit = {},
 ) {
     val vm: ChatViewModel = viewModel(
         key = "chat_$personaName",
@@ -404,6 +405,7 @@ fun ChatDetailScreen(
             onRedpacket = { showRedpacket = true },
             onAddCustomSticker = { localToast = "表情包已添加" },
             onLocalToast = { localToast = it },
+            onOpenStickerShop = onOpenStickerShop,
             transparentBackground = true,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -905,7 +907,13 @@ private fun StickerBubble(
     val bmp by produceState<ImageBitmap?>(initialValue = null, bubble.fileName) {
         value = withContext(Dispatchers.IO) {
             if (bubble.custom) StickerManager.getCustomStickerByName(context, bubble.fileName)
-            else StickerManager.getStickerByName(context, bubble.fileName)
+            else {
+                var b = StickerManager.getStickerByName(context, bubble.fileName)
+                if (b == null) {
+                    StickerManager.ensureSticker(context, bubble.fileName)
+                    null
+                } else b
+            }
         }?.asImageBitmap()
     }
     Column {
@@ -994,9 +1002,8 @@ private fun decodeStickerFull(context: android.content.Context, fileName: String
                 StickerManager.getCustomStickerFile(context, fileName).absolutePath
             )
         } else {
-            context.assets.open("stickers/$fileName").use {
-                android.graphics.BitmapFactory.decodeStream(it)
-            }
+            val f = StickerManager.stickerFileFor(context, fileName)
+            if (f != null) android.graphics.BitmapFactory.decodeFile(f.absolutePath) else null
         }
     } catch (_: Exception) {
         null

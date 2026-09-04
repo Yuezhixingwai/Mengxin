@@ -1,4 +1,5 @@
 package com.zhiyin.logic.data;
+
 import android.os.Handler;
 import android.os.Looper;
 import com.zhiyin.logic.net.ApiGateway;
@@ -16,6 +17,8 @@ public class FriendManager {
         public int id;
         public String name, persona, avatar;
         public boolean mute;
+        public int personaId = -1;
+        public String pat = "";
         public Friend(int id, String n, String p, String a) { this.id=id; name=n; persona=p; avatar=a!=null?a:""; mute=false; }
         public Friend(int id, String n, String p, String a, boolean m) { this.id=id; name=n; persona=p; avatar=a!=null?a:""; mute=m; }
     }
@@ -31,7 +34,10 @@ public class FriendManager {
                     if (arr != null) {
                         for (int i = 0; i < arr.length(); i++) {
                             JSONObject o = arr.getJSONObject(i);
-                            list.add(new Friend(o.optInt("id"), o.optString("name",""), o.optString("persona",""), o.optString("avatar",""), o.optBoolean("mute", false)));
+                            Friend f = new Friend(o.optInt("id"), o.optString("name",""), o.optString("persona",""), o.optString("avatar",""), o.optBoolean("mute", false));
+                            f.personaId = o.optInt("persona_id", -1);
+                            f.pat = o.optString("pat", "");
+                            list.add(f);
                         }
                     }
                     sNameToId.clear();

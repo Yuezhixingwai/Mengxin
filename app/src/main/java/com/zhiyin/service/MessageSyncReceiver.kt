@@ -76,6 +76,19 @@ class MessageSyncReceiver : BroadcastReceiver() {
             if (dirty) seen.edit().putStringSet("seen", seenSet).apply()
         } catch (_: Exception) {
         }
+        try {
+            val resp = ApiGateway.getSync(ApiGateway.ZHIYIN_BASE + "/api/notifications/unread-count", token)
+            val unread = JSONObject(resp).optInt("unread", 0)
+            val prefs = context.getSharedPreferences("zhiyin_sync", 0)
+            val lastNotified = prefs.getLong("notify_last_unread", 0L)
+            if (unread > 0 && unread.toLong() != lastNotified) {
+                prefs.edit().putLong("notify_last_unread", unread.toLong()).apply()
+                com.zhiyin.MsgNotifications.showPlazaNotify(context, unread)
+            } else if (unread == 0 && lastNotified != 0L) {
+                prefs.edit().putLong("notify_last_unread", 0L).apply()
+            }
+        } catch (_: Exception) {
+        }
     }
 
     private fun parseMsgTime(msg: JSONObject): Long {

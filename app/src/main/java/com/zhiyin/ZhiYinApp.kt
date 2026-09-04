@@ -31,6 +31,7 @@ class ZhiYinApp : Application() {
                 if (mem.isNotEmpty()) ApiGateway.setMemoryServiceUrl(this, mem)
             } catch (_: Exception) {
             }
+            com.zhiyin.logic.util.StickerManager.syncDefaultPackMeta(this)
         }
     }
 

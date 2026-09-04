@@ -112,6 +112,7 @@ fun ChatInputBar(
     onRedpacket: () -> Unit,
     onAddCustomSticker: () -> Unit,
     onLocalToast: (String) -> Unit,
+    onOpenStickerShop: () -> Unit = {},
     transparentBackground: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -262,6 +263,7 @@ fun ChatInputBar(
                     panel = "none"
                     stickerPick.launch("image/*")
                 },
+                onOpenShop = onOpenStickerShop,
             )
         }
 
@@ -411,7 +413,7 @@ private fun ToolButton(icon: ImageVector, label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun StickerPanel(onPick: (String) -> Unit, onAdd: () -> Unit) {
+private fun StickerPanel(onPick: (String) -> Unit, onAdd: () -> Unit, onOpenShop: () -> Unit) {
     val context = LocalContext.current
     val builtIns = remember { StickerManager.getAllStickers() }
     val customs = remember { StickerManager.listCustomStickers(context) }
@@ -436,6 +438,19 @@ private fun StickerPanel(onPick: (String) -> Unit, onAdd: () -> Unit) {
                 Icon(Icons.Rounded.Add, contentDescription = "添加表情包", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        item {
+            Column(
+                modifier = Modifier
+                    .size(72.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onOpenShop),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text("🛍", style = MaterialTheme.typography.titleMedium)
+                Text("商城", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+        }
         itemsIndexed(customs) { _, name ->
             val bmp = produceState<ImageBitmap?>(initialValue = null, name) {
                 value = withContext(Dispatchers.IO) {
@@ -449,7 +464,7 @@ private fun StickerPanel(onPick: (String) -> Unit, onAdd: () -> Unit) {
         itemsIndexed(builtIns) { _, item ->
             val bmp = produceState<ImageBitmap?>(initialValue = null, item.fileName) {
                 value = withContext(Dispatchers.IO) {
-                    decodeSampledAsset(context, item.fileName, 216)
+                    StickerManager.loadStickerBitmap(context, item.packId, item.fileName)
                 }?.asImageBitmap()
             }
             bmp.value?.let {
