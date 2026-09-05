@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
@@ -67,6 +69,8 @@ fun ImageCropperDialog(
     var framePx by remember { mutableStateOf(IntSize.Zero) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    var confirming by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     Dialog(
         onDismissRequest = onCancel,
@@ -100,14 +104,23 @@ fun ImageCropperDialog(
                         }
                     },
             ) {
-                bmp?.let {
+                bmp?.let { b ->
+                    val density = androidx.compose.ui.platform.LocalDensity.current
+                    val fitNow = maxOf(
+                        framePx.width.toFloat() / b.width,
+                        framePx.height.toFloat() / b.height,
+                    ).takeIf { framePx.width > 0 && framePx.height > 0 } ?: 1f
                     Image(
-                        bitmap = it.asImageBitmap(),
+                        bitmap = b.asImageBitmap(),
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.FillBounds,
                         filterQuality = FilterQuality.High,
                         modifier = Modifier
-                            .matchParentSize()
+                            .requiredSize(
+                                with(density) { (b.width * fitNow).toDp() },
+                                with(density) { (b.height * fitNow).toDp() },
+                            )
+                            .align(Alignment.Center)
                             .graphicsLayer {
                                 scaleX = scale
                                 scaleY = scale
@@ -137,14 +150,14 @@ fun ImageCropperDialog(
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    "确认",
+                    if (confirming) "处理中…" else "确认",
                     color = Color.White,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .clickable {
                             val b = bmp ?: return@clickable
-                            if (framePx.width <= 0 || framePx.height <= 0) return@clickable
+                            if (framePx.width <= 0 || framePx.height <= 0 || confirming) return@clickable
                             val fitNow = maxOf(
                                 framePx.width.toFloat() / b.width,
                                 framePx.height.toFloat() / b.height,
@@ -160,7 +173,36 @@ fun ImageCropperDialog(
                             val w = bw.roundToInt().coerceAtMost(b.width - l)
                             val h = bh.roundToInt().coerceAtMost(b.height - t)
                             if (w <= 0 || h <= 0) return@clickable
-                            onConfirm(Bitmap.createBitmap(b, l, t, w, h))
+                            confirming = true
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    try {
+                                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                        BitmapFactory.decodeFile(path, bounds)
+                                        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
+                                        val sx = bounds.outWidth.toFloat() / b.width
+                                        val sy = bounds.outHeight.toFloat() / b.height
+                                        val ol = (l * sx).toInt().coerceIn(0, bounds.outWidth - 1)
+                                        val ot = (t * sy).toInt().coerceIn(0, bounds.outHeight - 1)
+                                        val ow = (w * sx).roundToInt().coerceAtMost(bounds.outWidth - ol)
+                                        val oh = (h * sy).roundToInt().coerceAtMost(bounds.outHeight - ot)
+                                        if (ow <= 0 || oh <= 0) return@withContext null
+                                        var sample = 1
+                                        while (ow / (sample * 2) >= 4096 || oh / (sample * 2) >= 4096) sample *= 2
+                                        val decoder = android.graphics.BitmapRegionDecoder.newInstance(path, false)
+                                        val region = decoder.decodeRegion(
+                                            android.graphics.Rect(ol, ot, ol + ow, ot + oh),
+                                            BitmapFactory.Options().apply { inSampleSize = maxOf(1, sample) },
+                                        )
+                                        decoder.recycle()
+                                        region
+                                    } catch (_: Exception) {
+                                        null
+                                    } ?: Bitmap.createBitmap(b, l, t, w, h)
+                                }
+                                confirming = false
+                                if (result != null) onConfirm(result)
+                            }
                         }
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                 )

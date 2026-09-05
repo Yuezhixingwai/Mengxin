@@ -78,17 +78,9 @@ data class PlazaAuthor(
     val following: Boolean = false,
 )
 
-data class PlazaComment(
-    val id: Int,
-    val content: String,
-    val createdAt: String,
-    val userId: Int,
-    val nickname: String,
-    val avatar: String,
-    val mine: Boolean,
-)
-
 data class MyStats(val follows: Int, val followers: Int, val likesReceived: Int, val favsReceived: Int)
+
+data class PlazaContact(val id: Int, val name: String, val persona: String)
 
 object PlazaApi {
 
@@ -241,9 +233,18 @@ object PlazaApi {
         catch (e: Exception) { Result.failure(Exception(extractError(e))) }
     }
 
-    suspend fun addToContacts(id: Int): Result<Unit> = withContext(Dispatchers.IO) {
-        try { api("/api/personas/$id/add", "POST", "{}"); Result.success(Unit) }
-        catch (e: Exception) { Result.failure(Exception(extractError(e))) }
+    suspend fun addToContacts(id: Int): Result<PlazaContact> = withContext(Dispatchers.IO) {
+        try {
+            val j = JSONObject(api("/api/personas/$id/add", "POST", "{}"))
+            val c = j.optJSONObject("contact")
+            Result.success(
+                PlazaContact(
+                    id = c?.optInt("id") ?: 0,
+                    name = c?.optString("name") ?: "",
+                    persona = c?.optString("persona") ?: "",
+                )
+            )
+        } catch (e: Exception) { Result.failure(Exception(extractError(e))) }
     }
 
     suspend fun like(id: Int): Result<Pair<Boolean, Int>> = withContext(Dispatchers.IO) {
@@ -265,32 +266,6 @@ object PlazaApi {
             val j = JSONObject(api("/api/personas/$personaId/follow", "POST", "{}"))
             Result.success(j.optBoolean("following"))
         } catch (e: Exception) { Result.failure(Exception(extractError(e))) }
-    }
-
-    suspend fun comments(id: Int, page: Int, limit: Int = 20): Result<Pair<Int, List<PlazaComment>>> = withContext(Dispatchers.IO) {
-        try {
-            val j = JSONObject(api("/api/personas/$id/comments?page=$page&limit=$limit"))
-            val arr = j.optJSONArray("comments") ?: JSONArray()
-            val list = (0 until arr.length()).map {
-                val c = arr.optJSONObject(it)
-                PlazaComment(
-                    id = c.optInt("id"), content = c.optString("content"), createdAt = c.optString("created_at"),
-                    userId = c.optInt("user_id"), nickname = c.optString("nickname"), avatar = c.optString("avatar"),
-                    mine = c.optBoolean("mine"),
-                )
-            }
-            Result.success(j.optInt("total") to list)
-        } catch (e: Exception) { Result.failure(Exception(extractError(e))) }
-    }
-
-    suspend fun comment(id: Int, content: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try { api("/api/personas/$id/comment", "POST", jbody("content" to content)); Result.success(Unit) }
-        catch (e: Exception) { Result.failure(Exception(extractError(e))) }
-    }
-
-    suspend fun deleteComment(id: Int, cid: Int): Result<Unit> = withContext(Dispatchers.IO) {
-        try { api("/api/personas/$id/comment/$cid", "DELETE"); Result.success(Unit) }
-        catch (e: Exception) { Result.failure(Exception(extractError(e))) }
     }
 
     suspend fun author(userId: Int): Result<Pair<PlazaAuthor, List<PersonaLight>>> = withContext(Dispatchers.IO) {

@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -25,10 +26,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
-import java.util.concurrent.ConcurrentHashMap
 
 object RemoteImageCache {
-    val memory = ConcurrentHashMap<String, ImageBitmap>()
+    private const val MAX_MEMORY_ENTRIES = 24
+    private val memory: MutableMap<String, ImageBitmap> = java.util.Collections.synchronizedMap(LinkedHashMap())
+
+    fun get(key: String): ImageBitmap? = synchronized(memory) { memory[key] }
+    fun put(key: String, bmp: ImageBitmap) {
+        synchronized(memory) {
+            memory[key] = bmp
+            if (memory.size > MAX_MEMORY_ENTRIES) {
+                val it = memory.entries.iterator()
+                var remove = memory.size - MAX_MEMORY_ENTRIES / 2
+                while (remove > 0 && it.hasNext()) { it.next(); it.remove(); remove-- }
+            }
+        }
+    }
 
     fun diskDir(ctx: android.content.Context): File =
         File(ctx.filesDir, "plaza_img").apply { if (!exists()) mkdirs() }
@@ -43,6 +56,20 @@ object RemoteImageCache {
         if (url.startsWith("http")) url else ApiGateway.getBaseUrl() + url
 }
 
+private fun decodeSampled(data: ByteArray, maxDim: Int): android.graphics.Bitmap? {
+    return try {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxDim) sample *= 2
+        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+        android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, opts)
+    } catch (_: Exception) {
+        null
+    }
+}
+
 @Composable
 fun RemoteImage(
     url: String,
@@ -50,14 +77,16 @@ fun RemoteImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
     placeholder: (@Composable () -> Unit)? = null,
+    maxDim: Int = 1440,
 ) {
     val ctx = LocalContext.current
     val abs = remember(url) { if (url.isBlank()) "" else RemoteImageCache.absolute(url) }
+    val cacheKey = remember(abs, maxDim) { if (abs.isEmpty()) "" else "$abs@$maxDim" }
     val bmp by produceState<ImageBitmap?>(
-        initialValue = if (abs.isEmpty()) null else RemoteImageCache.memory[abs],
-        key1 = abs,
+        initialValue = if (cacheKey.isEmpty()) null else RemoteImageCache.get(cacheKey),
+        key1 = cacheKey,
     ) {
-        if (abs.isEmpty()) return@produceState
+        if (cacheKey.isEmpty()) return@produceState
         if (value == null) {
             value = withContext(Dispatchers.IO) {
                 try {
@@ -72,9 +101,8 @@ fun RemoteImage(
                         d
                     }
                     if (data != null && data.isNotEmpty()) {
-                        BitmapFactory.decodeByteArray(data, 0, data.size)?.asImageBitmap()?.also {
-                            if (RemoteImageCache.memory.size > 400) RemoteImageCache.memory.clear()
-                            RemoteImageCache.memory[abs] = it
+                        decodeSampled(data, maxDim)?.asImageBitmap()?.also {
+                            RemoteImageCache.put(cacheKey, it)
                         }
                     } else null
                 } catch (_: Exception) {
@@ -94,6 +122,7 @@ fun RemoteImage(
                     bitmap = cur,
                     contentDescription = contentDescription,
                     contentScale = contentScale,
+                    filterQuality = FilterQuality.High,
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {

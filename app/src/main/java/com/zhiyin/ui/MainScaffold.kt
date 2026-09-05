@@ -469,6 +469,11 @@ fun MainScaffold(appVm: AppViewModel) {
                     onBack = { pop() },
                     onOpenAuthor = { push(Overlay.AuthorPage(it)) },
                     onEdit = { push(Overlay.PersonaEdit(it)) },
+                    onOpenChat = { name, desc, id ->
+                        overlayStack.clear()
+                        navForward = false
+                        push(Overlay.Chat(name, desc, id))
+                    },
                 )
                 Overlay.PersonaSearch -> com.zhiyin.ui.discover.PersonaSearchScreen(
                     appVm = appVm,

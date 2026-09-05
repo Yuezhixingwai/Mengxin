@@ -97,6 +97,7 @@ fun PersonaCoverCard(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                     placeholder = { CoverPlaceholder(p.name) },
+                    maxDim = 720,
                 )
             } else {
                 CoverPlaceholder(p.name)

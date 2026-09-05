@@ -1,6 +1,7 @@
 package com.zhiyin.ui.discover
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Star
@@ -60,10 +63,20 @@ import androidx.compose.ui.unit.dp
 import com.zhiyin.data.AppSession
 import com.zhiyin.data.PersonaDetail
 import com.zhiyin.data.PlazaApi
-import com.zhiyin.data.PlazaComment
+import com.zhiyin.ui.DefaultAvatar
+import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.components.RemoteImage
 import com.zhiyin.ui.vm.AppViewModel
 import kotlinx.coroutines.launch
+
+@Composable
+private fun DetailStat(modifier: Modifier = Modifier, label: String, value: String) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(2.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 @Composable
 private fun CoverImagePlaceholder() {
@@ -88,6 +101,7 @@ fun PersonaDetailScreen(
     onBack: () -> Unit,
     onOpenAuthor: (Int) -> Unit,
     onEdit: (Int) -> Unit,
+    onOpenChat: (String, String, Int) -> Unit = { _, _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
     var detail by remember { mutableStateOf<PersonaDetail?>(null) }
@@ -98,11 +112,6 @@ fun PersonaDetailScreen(
     var likesCount by remember { mutableIntStateOf(0) }
     var favsCount by remember { mutableIntStateOf(0) }
     var adding by remember { mutableStateOf(false) }
-    var comments by remember { mutableStateOf<List<PlazaComment>>(emptyList()) }
-    var commentsTotal by remember { mutableIntStateOf(0) }
-    var commentPage by remember { mutableIntStateOf(0) }
-    var commentText by remember { mutableStateOf("") }
-    var sending by remember { mutableStateOf(false) }
 
     val myId = AppSession.userId().toIntOrNull() ?: -1
 
@@ -123,20 +132,8 @@ fun PersonaDetailScreen(
         }
     }
 
-    fun loadComments(reset: Boolean) {
-        val page = if (reset) 1 else commentPage + 1
-        scope.launch {
-            PlazaApi.comments(personaId, page).onSuccess { (total, list) ->
-                commentsTotal = total
-                commentPage = page
-                comments = if (reset) list else (comments + list).distinctBy { it.id }
-            }
-        }
-    }
-
     LaunchedEffect(personaId) {
         reload()
-        loadComments(true)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -169,112 +166,155 @@ fun PersonaDetailScreen(
         }
         val d = detail!!
 
+        RubberBandBox(modifier = Modifier.fillMaxSize()) {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
-                        .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
                 ) {
-                    if (d.light.coverUrl.isNotEmpty()) {
-                        RemoteImage(
-                            url = d.light.coverUrl,
-                            contentDescription = d.light.name,
-                            modifier = Modifier.fillMaxSize(),
-                            placeholder = { CoverImagePlaceholder() },
-                        )
-                    } else {
-                        CoverImagePlaceholder()
+                    Surface(
+                        shape = RoundedCornerShape(22.dp),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(215.dp)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                        ) {
+                            if (d.light.coverUrl.isNotEmpty()) {
+                                RemoteImage(
+                                    url = d.light.coverUrl,
+                                    contentDescription = d.light.name,
+                                    modifier = Modifier.fillMaxSize(),
+                                    placeholder = { CoverImagePlaceholder() },
+                                )
+                            } else {
+                                CoverImagePlaceholder()
+                            }
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .offset(x = 14.dp, y = 44.dp)
+                            .size(88.dp)
+                            .clip(CircleShape)
+                            .border(3.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (d.light.avatarUrl.isNotEmpty()) {
+                            RemoteImage(
+                                url = d.light.avatarUrl,
+                                contentDescription = d.light.name,
+                                modifier = Modifier.fillMaxSize(),
+                                placeholder = { com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(88.dp), size = 88.dp, shape = CircleShape) },
+                            )
+                        } else {
+                            com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(88.dp), size = 88.dp, shape = CircleShape)
+                        }
                     }
                 }
             }
 
+            item { Spacer(Modifier.height(58.dp)) }
+
             item {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Box(
-                            Modifier
-                                .size(72.dp)
-                                .clip(CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (d.light.avatarUrl.isNotEmpty()) {
-                                RemoteImage(
-                                    url = d.light.avatarUrl,
-                                    contentDescription = d.light.name,
-                                    modifier = Modifier.fillMaxSize(),
-                                    placeholder = {
-                                        com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(72.dp), size = 72.dp, shape = CircleShape)
-                                    },
-                                )
-                            } else {
-                                com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(72.dp), size = 72.dp, shape = CircleShape)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            d.light.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (d.light.isOfficial) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 8.dp),
+                            ) {
+                                Text("官方", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                             }
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(d.light.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (d.light.isOfficial) {
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(start = 8.dp),
-                                    ) {
-                                        Text("官方", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                                    }
-                                }
-                            }
-                            if (d.light.slogan.isNotEmpty()) {
-                                Text(
-                                    d.light.slogan,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Text(
-                                "${d.light.category} · 🔥 ${d.light.hot} 人在用",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                         }
                     }
+                    if (d.light.slogan.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            d.light.slogan,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${d.light.category} · 🔥 ${d.light.hot} 人在用",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
-                    d.author?.let { au ->
+            item { Spacer(Modifier.height(12.dp)) }
+
+            item {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                        DetailStat(Modifier.weight(1f), "热度", "🔥 ${d.light.hot}")
+                        DetailStat(Modifier.weight(1f), "点赞", "$likesCount")
+                        DetailStat(Modifier.weight(1f), "收藏", "$favsCount")
+                    }
+                }
+            }
+
+            item { Spacer(Modifier.height(10.dp)) }
+
+            d.author?.let { au ->
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .clickable { onOpenAuthor(au.id) },
+                    ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 10.dp)
-                                .clickable { onOpenAuthor(au.id) },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Box(
-                                Modifier.size(30.dp).clip(CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
+                            Box(Modifier.size(40.dp).clip(CircleShape), contentAlignment = Alignment.Center) {
                                 if (au.avatar.isNotEmpty()) {
                                     RemoteImage(
                                         url = au.avatar,
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
-                                        placeholder = { com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(30.dp), size = 30.dp, shape = CircleShape) },
+                                        placeholder = { com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(40.dp), size = 40.dp, shape = CircleShape) },
                                     )
                                 } else {
-                                    com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(30.dp), size = 30.dp, shape = CircleShape)
+                                    com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(40.dp), size = 40.dp, shape = CircleShape)
                                 }
                             }
-                            Spacer(Modifier.width(8.dp))
-                            Text(au.nickname, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                            Text(
-                                " · ${au.followers} 粉丝",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.weight(1f))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(au.nickname, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "${au.followers} 粉丝 · 点击查看主页",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = if (following) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
@@ -296,37 +336,57 @@ fun PersonaDetailScreen(
                             }
                         }
                     }
+                }
+            }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            item { Spacer(Modifier.height(12.dp)) }
+
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = !adding) {
+                            adding = true
+                            scope.launch {
+                                PlazaApi.addToContacts(personaId).onSuccess { contact ->
+                                    appVm.loadFriends()
+                                    appVm.showToast("已添加到通讯录")
+                                    if (contact.id > 0) {
+                                        onOpenChat(contact.name, contact.persona, contact.id)
+                                    }
+                                }.onFailure { appVm.showToast(it.message ?: "添加失败") }
+                                adding = false
+                            }
+                        },
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(22.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f).clickable(enabled = !adding) {
-                                adding = true
-                                scope.launch {
-                                    PlazaApi.addToContacts(personaId).onSuccess {
-                                        appVm.showToast("已添加到会话，去「会话」页聊天吧")
-                                        appVm.loadFriends()
-                                    }.onFailure { appVm.showToast(it.message ?: "添加失败") }
-                                    adding = false
-                                }
-                            },
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            Icon(
+                                androidx.compose.material.icons.Icons.Filled.Add,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
                             Text(
-                                if (adding) "添加中…" else "添加会话",
+                                if (adding) "添加中…" else "添加到会话",
                                 color = MaterialTheme.colorScheme.onPrimary,
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                             )
                         }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Surface(
-                            shape = RoundedCornerShape(22.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.clickable {
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (liked) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.weight(1f).clickable {
                                 scope.launch {
                                     PlazaApi.like(personaId).onSuccess { (lk, cnt) ->
                                         liked = lk
@@ -337,22 +397,27 @@ fun PersonaDetailScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                             ) {
                                 Icon(
                                     if (liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                                     contentDescription = "点赞",
                                     tint = if (liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(16.dp),
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text("$likesCount", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    if (liked) "已赞 $likesCount" else "点赞 $likesCount",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (liked) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                )
                             }
                         }
                         Surface(
-                            shape = RoundedCornerShape(22.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.clickable {
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (faved) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.weight(1f).clickable {
                                 scope.launch {
                                     PlazaApi.favorite(personaId).onSuccess { (fv, cnt) ->
                                         faved = fv
@@ -364,29 +429,38 @@ fun PersonaDetailScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                             ) {
                                 Icon(
                                     if (faved) Icons.Filled.Star else Icons.Filled.StarBorder,
                                     contentDescription = "收藏",
                                     tint = if (faved) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(16.dp),
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text("$favsCount", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    if (faved) "已藏 $favsCount" else "收藏 $favsCount",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (faved) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                )
                             }
                         }
                     }
+                }
+            }
 
-                    if (d.light.tags.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier.padding(top = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            d.light.tags.take(6).forEach { t ->
-                                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                                    Text("# $t", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
-                                }
+            item { Spacer(Modifier.height(4.dp)) }
+
+            if (d.light.tags.isNotEmpty()) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        d.light.tags.take(6).forEach { t ->
+                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                Text("# $t", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                             }
                         }
                     }
@@ -405,111 +479,10 @@ fun PersonaDetailScreen(
                 }
             }
 
-            item {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                    Text("评论 ($commentsTotal)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                }
-            }
-            items(comments, key = { it.id }) { c ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp),
-                ) {
-                    Box(
-                        Modifier.size(32.dp).clip(CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (c.avatar.isNotEmpty()) {
-                            RemoteImage(
-                                url = c.avatar,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                placeholder = { com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(32.dp), size = 32.dp, shape = CircleShape) },
-                            )
-                        } else {
-                            com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(32.dp), size = 32.dp, shape = CircleShape)
-                        }
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(c.nickname, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                com.zhiyin.logic.net.ApiGateway.toBeijingTime(c.createdAt, "MM-dd HH:mm"),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Text(c.content, style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (c.mine) {
-                        Text(
-                            "删除",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.clickable {
-                                scope.launch {
-                                    PlazaApi.deleteComment(personaId, c.id).onSuccess {
-                                        appVm.showToast("已删除")
-                                        loadComments(true)
-                                    }.onFailure { appVm.showToast(it.message ?: "删除失败") }
-                                }
-                            }.padding(4.dp),
-                        )
-                    }
-                }
-            }
-            if (comments.size < commentsTotal) {
-                item {
-                    Text(
-                        "加载更多评论",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { loadComments(false) }
-                            .padding(16.dp),
-                    )
-                }
-            }
-            item { Spacer(Modifier.height(76.dp)) }
+            item { Spacer(Modifier.height(24.dp)) }
+        }
         }
     }
+}
 
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp,
-        modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).imePadding(),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedTextField(
-                value = commentText,
-                onValueChange = { commentText = it },
-                placeholder = { Text("说点什么…", style = MaterialTheme.typography.bodyMedium) },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(20.dp),
-                maxLines = 3,
-            )
-            Spacer(Modifier.width(8.dp))
-            TextButton(
-                enabled = commentText.isNotBlank() && !sending,
-                onClick = {
-                    sending = true
-                    scope.launch {
-                        PlazaApi.comment(personaId, commentText.trim()).onSuccess {
-                            commentText = ""
-                            appVm.showToast("评论成功")
-                            loadComments(true)
-                            reload()
-                        }.onFailure { appVm.showToast(it.message ?: "评论失败") }
-                        sending = false
-                    }
-                },
-            ) { Text("发送", fontWeight = FontWeight.SemiBold) }
-        }
-    }
-    }
 }
