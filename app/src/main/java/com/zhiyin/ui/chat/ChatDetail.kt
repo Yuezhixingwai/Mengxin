@@ -150,6 +150,7 @@ fun parseBubble(raw: String): Bubble {
             Bubble.Sticker(name, custom = isCustom, extra = extra)
         }
         c.startsWith("[image]") -> Bubble.Image(c.removePrefix("[image]"))
+        c.startsWith("[video]") -> Bubble.FileMsg("视频消息", null)
         c.startsWith("[file]") -> {
             val body = c.removePrefix("[file]")
             val idx = body.indexOf("||")
@@ -400,6 +401,7 @@ fun ChatDetailScreen(
             onSendSticker = { marker -> vm.sendSticker(marker) },
             onSendImage = { path -> vm.sendImage(path) },
             onSendFile = { name, path -> vm.sendFile(name, path) },
+            onSendVideo = { path -> vm.sendVideo(path) },
             onSendVoice = { path, sec -> vm.sendVoice(path, sec) },
             onTransfer = { showTransfer = true },
             onRedpacket = { showRedpacket = true },

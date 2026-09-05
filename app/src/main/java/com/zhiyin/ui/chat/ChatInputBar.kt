@@ -111,7 +111,8 @@ fun ChatInputBar(
     onTransfer: () -> Unit,
     onRedpacket: () -> Unit,
     onAddCustomSticker: () -> Unit,
-    onLocalToast: (String) -> Unit,
+    onSendVideo: (String) -> Unit = {},
+    onLocalToast: (String) -> Unit = {},
     onOpenStickerShop: () -> Unit = {},
     transparentBackground: Boolean = false,
     modifier: Modifier = Modifier,
@@ -157,8 +158,12 @@ fun ChatInputBar(
 
     val filePick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
+            val mime = try { context.contentResolver.getType(it) ?: "" } catch (_: Exception) { "" }
             val copied = ContentCopy.copyToCache(context, it, "file")
-            if (copied != null) onSendFile(copied.displayName, copied.path) else onLocalToast("处理文件失败")
+            if (copied != null) {
+                if (mime.startsWith("video/")) onSendVideo(copied.path)
+                else onSendFile(copied.displayName, copied.path)
+            } else onLocalToast("处理文件失败")
         }
     }
 

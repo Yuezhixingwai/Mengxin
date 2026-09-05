@@ -525,6 +525,110 @@ public class ChatEngine {
         }).start();
     }
 
+    public static void sendVideo(Context ctx, Persona p, String localPath) {
+        String sid = "persona_" + p.name;
+        MsgRepo.add(ctx, sid, "user", "[video]" + localPath);
+        notifyChanged();
+        notifyTyping(true);
+        String fToken = token(ctx);
+        new Thread(() -> {
+            try {
+                final String fTokenFinal = fToken;
+                final String localPathFinal = localPath;
+                new Thread(() -> {
+                    try {
+                        ApiGateway.uploadSync(ApiGateway.ZHIYIN_BASE + uploadUrl(ctx, p.name), localPathFinal, fTokenFinal);
+                    } catch (Exception ignored) {
+                    }
+                }).start();
+
+                android.media.MediaMetadataRetriever mmr = new android.media.MediaMetadataRetriever();
+                java.util.List<byte[]> frames = new ArrayList<>();
+                try {
+                    mmr.setDataSource(localPathFinal);
+                    long durMs = 0;
+                    try {
+                        durMs = Long.parseLong(mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION));
+                    } catch (Exception ignored) {
+                    }
+                    java.util.LinkedHashSet<Long> pts = new java.util.LinkedHashSet<>();
+                    if (durMs > 0) {
+                        pts.add(durMs / 10);
+                        pts.add(durMs / 2);
+                        pts.add((durMs * 9) / 10);
+                    } else {
+                        pts.add(0L);
+                    }
+                    for (long tMs : pts) {
+                        android.graphics.Bitmap frame = mmr.getFrameAtTime(tMs * 1000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                        if (frame == null) continue;
+                        android.graphics.Bitmap use = frame;
+                        if (use.getWidth() > 720) {
+                            int h = use.getHeight() * 720 / use.getWidth();
+                            android.graphics.Bitmap scaled = android.graphics.Bitmap.createScaledBitmap(use, 720, Math.max(1, h), true);
+                            if (scaled != use) {
+                                use.recycle();
+                                use = scaled;
+                            }
+                        }
+                        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                        use.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, bo);
+                        frames.add(bo.toByteArray());
+                        use.recycle();
+                    }
+                } finally {
+                    try { mmr.release(); } catch (Exception ignored) {}
+                }
+                if (frames.isEmpty()) {
+                    notifyNotice("视频抽帧失败，无法识别内容");
+                    notifyTyping(false);
+                    return;
+                }
+
+                JSONArray arr = new JSONArray();
+                for (byte[] f : frames) arr.put(Base64.encodeToString(f, Base64.NO_WRAP));
+                JSONObject body = new JSONObject();
+                body.put("images_base64", arr);
+                body.put("kind", "video");
+                if (officialQuota(ctx)) body.put("use_official", 1);
+                if (p.name != null && !p.name.isEmpty()) body.put("persona_name", p.name);
+                if (p.desc != null && !p.desc.isEmpty()) body.put("persona_desc", p.desc);
+                String resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/image/recognize", body.toString(), fTokenFinal);
+                JSONObject json = new JSONObject(resp);
+                if (json.has("error")) {
+                    notifyNotice("视频识别失败: " + json.optString("error"));
+                    notifyTyping(false);
+                    return;
+                }
+                String text = json.optString("text", "");
+                if (!text.isEmpty()) {
+                    boolean sendSticker = prefs(ctx).getBoolean("sticker_enabled", true) && Math.random() < 0.15;
+                    String stickerFileName = sendSticker ? StickerManager.getStickerFileNameForText(text) : null;
+                    if (stickerFileName != null) {
+                        StickerManager.StickerItem si = StickerManager.findStickerItem(stickerFileName);
+                        if (si != null) text = "[STICKER:" + si.fileName + "]" + text;
+                    }
+                    List<String> segs = splitText(text);
+                    for (int i = 0; i < segs.size(); i++) {
+                        final String seg = segs.get(i);
+                        MAIN.postDelayed(() -> {
+                            if (!seg.isEmpty()) {
+                                MsgRepo.add(ctx, sid, "ai", seg);
+                                notifyChanged();
+                            }
+                        }, i * 600L);
+                    }
+                } else {
+                    notifyNotice("视频已发送");
+                }
+                notifyTyping(false);
+            } catch (Exception e) {
+                notifyNotice("视频发送失败: " + e.getMessage());
+                notifyTyping(false);
+            }
+        }).start();
+    }
+
     public static String fmtMoney(double v) {
         if (v == Math.floor(v) && !Double.isInfinite(v)) return String.valueOf((long) v);
         return String.valueOf(Math.round(v * 100) / 100.0);

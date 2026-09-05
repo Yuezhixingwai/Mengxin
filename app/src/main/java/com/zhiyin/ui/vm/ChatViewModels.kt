@@ -213,6 +213,9 @@ class ChatViewModel(
     fun sendFile(fileName: String, localPath: String) =
         ChatEngine.sendFile(getApplication(), persona, fileName, localPath)
 
+    fun sendVideo(localPath: String) =
+        ChatEngine.sendVideo(getApplication(), persona, localPath)
+
     fun sendVoice(filePath: String, durationSec: Long) =
         ChatEngine.sendVoice(getApplication(), persona, filePath, durationSec)
 
