@@ -20,7 +20,7 @@ import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManagerFactory;
 
 public class ApiGateway {
-    public static String ZHIYIN_BASE = "http://192.168.1.22:9005";
+    public static String ZHIYIN_BASE = "https://api.zhiyin.zhendeqiang.top";
 
     public static final String OFFICIAL_SITE = "https://zhiyin.zhendeqiang.top";
 
