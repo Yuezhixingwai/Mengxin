@@ -93,8 +93,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zhiyin.data.AppSession
+import com.zhiyin.data.PlazaApi
 import com.zhiyin.data.VoicePlayer
 import com.zhiyin.logic.chat.ChatEngine
+import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.data.PersonaManager
 import com.zhiyin.logic.net.ApiGateway
 import com.zhiyin.logic.util.StickerManager
@@ -104,6 +106,7 @@ import com.zhiyin.ui.components.ImageCropperDialog
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.LingXinSheet
 import com.zhiyin.ui.components.PersonaAvatar
+import com.zhiyin.ui.components.RemoteImage
 import com.zhiyin.ui.components.UserAvatar
 import com.zhiyin.ui.vm.ChatMsg
 import com.zhiyin.ui.vm.ChatViewModel
@@ -270,6 +273,39 @@ fun ChatDetailScreen(
         } else null
     }
 
+    var personaBgEnabled by remember(personaId) {
+        mutableStateOf(bgPrefs.getBoolean("persona_bg_enabled_$personaId", true))
+    }
+    var plazaPersonaId by remember(personaId) {
+        mutableStateOf(FriendManager.getCachedFriends().firstOrNull { it.id == personaId }?.personaId ?: -1)
+    }
+    var personaBgUrl by remember(personaId) { mutableStateOf("") }
+    LaunchedEffect(personaId) {
+        if (plazaPersonaId <= 0 && personaId >= 0) {
+            val token = AppSession.token()
+            if (token.isNotEmpty()) {
+                FriendManager.getAll(token, object : FriendManager.Callback {
+                    override fun onResult(list: MutableList<FriendManager.Friend>?) {
+                        val pid = list?.firstOrNull { it.id == personaId }?.personaId ?: -1
+                        if (pid > 0) plazaPersonaId = pid
+                    }
+
+                    override fun onError(err: String?) {}
+                })
+            }
+        }
+    }
+    LaunchedEffect(plazaPersonaId) {
+        if (plazaPersonaId > 0) {
+            PlazaApi.detail(plazaPersonaId).onSuccess { d ->
+                personaBgUrl = d.light.backgroundUrl
+            }
+        }
+    }
+    val manualBgActive = chatBgPath.isNotEmpty()
+    val personaBgActive = !manualBgActive && personaBgEnabled && personaBgUrl.isNotEmpty()
+    val hasBg = (manualBgActive && bgBmp != null) || personaBgActive
+
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = (vm.messages.size - 1).coerceAtLeast(0),
     )
@@ -322,10 +358,19 @@ fun ChatDetailScreen(
             }
             .background(MaterialTheme.colorScheme.surface),
     ) {
-        bgBmp?.let {
-            Image(
-                bitmap = it,
-                contentDescription = "聊天背景",
+        if (manualBgActive) {
+            bgBmp?.let {
+                Image(
+                    bitmap = it,
+                    contentDescription = "聊天背景",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        } else if (personaBgActive) {
+            RemoteImage(
+                url = personaBgUrl,
+                contentDescription = "人设背景",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -333,13 +378,13 @@ fun ChatDetailScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (bgBmp != null) Modifier.padding(top = topBarTotalHeight, bottom = inputBarHeight) else Modifier),
+                .then(if (hasBg) Modifier.padding(top = topBarTotalHeight, bottom = inputBarHeight) else Modifier),
         ) {
             RubberBandBox(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .then(if (bgBmp == null) Modifier.hazeSource(hazeState) else Modifier),
+                    .then(if (!hasBg) Modifier.hazeSource(hazeState) else Modifier),
             ) {
                 LazyColumn(
                     state = listState,
@@ -347,8 +392,8 @@ fun ChatDetailScreen(
                     contentPadding = PaddingValues(
                         start = 12.dp,
                         end = 12.dp,
-                        top = if (bgBmp == null) topBarTotalHeight else 0.dp,
-                        bottom = if (bgBmp == null) 10.dp + inputBarHeight else 10.dp,
+                        top = if (!hasBg) topBarTotalHeight else 0.dp,
+                        bottom = if (!hasBg) 10.dp + inputBarHeight else 10.dp,
                     ),
                 ) {
             items(vm.messages, key = { it.index }) { msg ->
@@ -411,7 +456,7 @@ fun ChatDetailScreen(
             transparentBackground = true,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .then(if (bgBmp == null) {
+                .then(if (!hasBg) {
                     Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeDefaults.style(
@@ -432,7 +477,7 @@ fun ChatDetailScreen(
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = Color.Transparent,
             ),
-            modifier = if (bgBmp == null) {
+            modifier = if (!hasBg) {
                 Modifier.hazeEffect(
                     state = hazeState,
                     style = HazeDefaults.style(
@@ -552,6 +597,13 @@ fun ChatDetailScreen(
                     bgPrefs.edit().remove("bg_path").apply()
                     chatBgPath = ""
                     localToast = "已恢复默认背景"
+                },
+                personaBgAvailable = personaBgUrl.isNotEmpty(),
+                personaBgEnabled = personaBgEnabled,
+                onTogglePersonaBg = { enabled ->
+                    personaBgEnabled = enabled
+                    bgPrefs.edit().putBoolean("persona_bg_enabled_$personaId", enabled).apply()
+                    localToast = if (enabled) "已开启人设背景图" else "已关闭人设背景图"
                 },
                 onDismiss = { showChatSettings = false },
                 onOpenFriendSettings = {
@@ -1393,6 +1445,9 @@ private fun ChatSettingsSheetContent(
     hasChatBg: Boolean,
     onSetBackground: () -> Unit,
     onClearBackground: () -> Unit,
+    personaBgAvailable: Boolean,
+    personaBgEnabled: Boolean,
+    onTogglePersonaBg: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     onOpenFriendSettings: () -> Unit,
     onOpenSearchSettings: () -> Unit,
@@ -1495,6 +1550,9 @@ private fun ChatSettingsSheetContent(
             ) {
                 onClearBackground()
             }
+        }
+        if (personaBgAvailable) {
+            SheetSwitchRow("人设背景图", personaBgEnabled) { onTogglePersonaBg(it) }
         }
         com.zhiyin.ui.SheetActionRow(
             icon = Icons.Rounded.Settings,

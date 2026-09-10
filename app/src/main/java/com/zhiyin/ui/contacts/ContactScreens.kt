@@ -3,6 +3,7 @@ package com.zhiyin.ui.contacts
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.UploadFile
@@ -358,6 +361,7 @@ fun FriendSettingsScreen(
     var name by remember { mutableStateOf(savedRemark ?: friend.name) }
     var persona by remember { mutableStateOf(friend.persona ?: "") }
     var mute by remember { mutableStateOf(friend.mute) }
+    var personaExpanded by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
     var wechatBound by remember(friend.id) { mutableStateOf<Boolean?>(null) }
@@ -470,43 +474,70 @@ fun FriendSettingsScreen(
 
             CardSection(title = "资料") {
                 SheetFieldIn(name, { name = it }, "备注名")
-                if (official) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp),
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { personaExpanded = !personaExpanded }
+                            .padding(horizontal = 4.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 15.dp)) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("AI人设描述", style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "AI人设描述",
+                                if (personaExpanded) "点击收起"
+                                else if (official) "官方内置人设，点击展开查看" else "已折叠，点击展开查看或修改",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Text(
-                                "官方内置人设，内容不可查看与修改",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        }
+                        Icon(
+                            if (personaExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                            contentDescription = if (personaExpanded) "收起" else "展开",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    AnimatedVisibility(visible = personaExpanded) {
+                        if (official) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 15.dp)) {
+                                    Text(
+                                        "AI人设描述",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        "官方内置人设，内容不可查看与修改",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = persona,
+                                onValueChange = { persona = it },
+                                placeholder = { Text("AI人设描述（性格、说话方式等）") },
+                                minLines = 4,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    unfocusedBorderColor = Color.Transparent,
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
                             )
                         }
                     }
-                } else {
-                    OutlinedTextField(
-                        value = persona,
-                        onValueChange = { persona = it },
-                        placeholder = { Text("AI人设描述（性格、说话方式等）") },
-                        minLines = 4,
-                        shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            unfocusedBorderColor = Color.Transparent,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                    )
                 }
                 Row(
                     modifier = Modifier

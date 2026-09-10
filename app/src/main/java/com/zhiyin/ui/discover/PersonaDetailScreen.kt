@@ -66,7 +66,10 @@ import com.zhiyin.data.PlazaApi
 import com.zhiyin.ui.DefaultAvatar
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.components.RemoteImage
+import com.zhiyin.ui.components.acrylic
+import com.zhiyin.ui.components.acrylicSource
 import com.zhiyin.ui.vm.AppViewModel
+import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.launch
 
 @Composable
@@ -136,15 +139,25 @@ fun PersonaDetailScreen(
         reload()
     }
 
+    val bgHazeState = remember { HazeState() }
     Box(modifier = Modifier.fillMaxSize()) {
     detail?.light?.backgroundUrl?.takeIf { it.isNotEmpty() }?.let { bg ->
-        RemoteImage(
-            url = bg,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
+        Box(modifier = Modifier.fillMaxSize().acrylicSource(bgHazeState)) {
+            RemoteImage(
+                url = bg,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .acrylic(
+                    state = bgHazeState,
+                    tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                ),
         )
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)))
     }
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
