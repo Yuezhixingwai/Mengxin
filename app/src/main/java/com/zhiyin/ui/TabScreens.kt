@@ -69,6 +69,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.TravelExplore
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -888,6 +889,7 @@ fun SettingsScreen(
     onOpenAnnouncements: () -> Unit = {},
     onOpenPreferences: () -> Unit = {},
     onOpenStickerShop: () -> Unit = {},
+    onOpenGlobalBackground: () -> Unit = {},
 ) {
     val darkTheme by appVm.darkMode.collectAsState()
     val notifyEnabled by appVm.notifyEnabled.collectAsState()
@@ -989,7 +991,11 @@ fun SettingsScreen(
             }
 
             CardContainer {
-                MenuRow(Icons.Rounded.Palette, "个性装扮", onClick = { showThemePicker = true })
+                Column {
+                    MenuRow(Icons.Rounded.Palette, "个性装扮", onClick = { showThemePicker = true })
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    MenuRow(Icons.Rounded.Wallpaper, "全局背景", onClick = onOpenGlobalBackground)
+                }
             }
 
             CardContainer {

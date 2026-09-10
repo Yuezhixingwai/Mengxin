@@ -20,12 +20,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.zhiyin.data.PaymentPasswordManager
 
-/**
- * 转账/发红包时的支付密码门禁。
- * - 已设置密码：要求输入密码校验，正确才执行 [onContinue]。
- * - 未设置（首次）→ 弹出设置对话框，用户可选择"设置密码"或"免密转账"，
- *   完成后执行 [onContinue]。纯本地装饰性功能。
- */
 @Composable
 fun EnsurePayPasswordFlow(
     onContinue: () -> Unit,

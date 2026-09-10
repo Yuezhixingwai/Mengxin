@@ -338,8 +338,6 @@ private fun ImageSlot(
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
-
-/** 作者主页：TA 的公开人设 + 关注 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthorScreen(

@@ -16,6 +16,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -81,6 +82,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -89,8 +91,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -100,6 +105,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zhiyin.data.ImageUtils
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.data.MsgRepo
 import com.zhiyin.ui.chat.ChatDetailScreen
@@ -107,6 +113,7 @@ import com.zhiyin.ui.chat.GroupChatScreen
 import com.zhiyin.ui.components.GroupAvatar
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.PersonaAvatar
+import com.zhiyin.ui.components.acrylic
 import com.zhiyin.ui.contacts.AddFriendScreen
 import com.zhiyin.ui.contacts.CreateGroupScreen
 import com.zhiyin.ui.contacts.FriendSettingsScreen
@@ -129,11 +136,13 @@ import com.zhiyin.ui.settings.AccountSecurityScreen
 import com.zhiyin.ui.settings.AnnouncementsScreen
 import com.zhiyin.ui.settings.BindingsScreen
 import com.zhiyin.ui.settings.FeedbackScreen
+import com.zhiyin.ui.settings.GlobalBackgroundScreen
 import com.zhiyin.ui.settings.PrivacyScreen
 import com.zhiyin.ui.settings.ProfileEditScreen
 import com.zhiyin.ui.settings.SearchSettingsScreen
 import com.zhiyin.ui.settings.WalletScreen
 import com.zhiyin.ui.settings.WechatBindScreen
+import com.zhiyin.ui.theme.globalBackground
 import com.zhiyin.ui.vm.AppViewModel
 import com.zhiyin.ui.vm.ChatListViewModel
 import com.zhiyin.ui.vm.TimeFmt
@@ -141,6 +150,8 @@ import dev.chrisbanes.haze.HazeDefaults
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.hypot
 
 private enum class MainTab(
@@ -194,10 +205,12 @@ sealed interface Overlay {
     data object StickerShop : Overlay
     data class AuthorPage(val userId: Int) : Overlay
     data object Preferences : Overlay
+    data object GlobalBackground : Overlay
 }
 
 internal val BottomNavBarHeight: Dp = 60.dp
 
+@OptIn(dev.chrisbanes.haze.ExperimentalHazeApi::class)
 @Composable
 fun MainScaffold(appVm: AppViewModel) {
     val view = LocalView.current
@@ -235,11 +248,46 @@ fun MainScaffold(appVm: AppViewModel) {
 
     BackHandler(enabled = overlay != null) { pop() }
 
+    val globalBgEnabled by appVm.globalBgEnabled.collectAsState()
+    val globalBgPath by appVm.globalBgPath.collectAsState()
+    val globalBgAcrylic by appVm.globalBgAcrylic.collectAsState()
+    val globalBgBlur by appVm.globalBgBlur.collectAsState()
+    val globalBgBitmap by produceState<ImageBitmap?>(initialValue = null, globalBgPath) {
+        value = if (globalBgPath.isEmpty()) null else withContext(Dispatchers.IO) {
+            val f = java.io.File(globalBgPath)
+            if (f.exists()) ImageUtils.decodeSampled(globalBgPath, 1600)?.asImageBitmap() else null
+        }
+    }
+    val globalBgHaze = remember { HazeState() }
+    val baseScheme = MaterialTheme.colorScheme
+    val globalBgReady = globalBgEnabled && globalBgBitmap != null
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface),
     ) {
+        if (globalBgReady) {
+            Box(modifier = Modifier.fillMaxSize().hazeSource(globalBgHaze)) {
+                Image(
+                    bitmap = globalBgBitmap!!,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            if (globalBgAcrylic) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .acrylic(
+                            state = globalBgHaze,
+                            tint = baseScheme.surface.copy(alpha = 0.35f),
+                            blurRadius = globalBgBlur.dp,
+                        ),
+                )
+            }
+        }
         AnimatedContent(
             targetState = overlay,
             transitionSpec = {
@@ -257,6 +305,14 @@ fun MainScaffold(appVm: AppViewModel) {
             },
             label = "overlay",
         ) { o ->
+            val branchChat = o is Overlay.Chat || o is Overlay.Group
+            MaterialTheme(
+                colorScheme = if (globalBgReady && !branchChat) {
+                    baseScheme.globalBackground(if (globalBgAcrylic) 0.62f else 0.80f)
+                } else {
+                    baseScheme
+                },
+            ) {
             when (o) {
                 is Overlay.Chat -> ChatDetailScreen(
                     personaName = o.name,
@@ -295,6 +351,7 @@ fun MainScaffold(appVm: AppViewModel) {
                     onOpenAnnouncements = { push(Overlay.Announcements) },
                     onOpenPreferences = { push(Overlay.Preferences) },
                     onOpenStickerShop = { push(Overlay.StickerShop) },
+                    onOpenGlobalBackground = { push(Overlay.GlobalBackground) },
                 )
                 Overlay.AddFriend -> AddFriendScreen(
                     appVm = appVm,
@@ -511,6 +568,10 @@ fun MainScaffold(appVm: AppViewModel) {
                     appVm = appVm,
                     onBack = { pop() },
                 )
+                Overlay.GlobalBackground -> GlobalBackgroundScreen(
+                    appVm = appVm,
+                    onBack = { pop() },
+                )
                 null -> MainContent(
                     appVm = appVm,
                     chatListVm = chatListVm,
@@ -551,6 +612,7 @@ fun MainScaffold(appVm: AppViewModel) {
                 )
             }
         }
+    }
     }
 }
 

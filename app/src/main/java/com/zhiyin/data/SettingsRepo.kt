@@ -76,4 +76,48 @@ object SettingsRepo {
 
     fun hasTavilyKey(ctx: Context) =
         ctx.getSharedPreferences("zhiyin_search", Context.MODE_PRIVATE).getBoolean("has_tavily_key", false)
+
+    private val _globalBgEnabled = MutableStateFlow(false)
+    val globalBgEnabled: StateFlow<Boolean> = _globalBgEnabled
+
+    private val _globalBgPath = MutableStateFlow("")
+    val globalBgPath: StateFlow<String> = _globalBgPath
+
+    private val _globalBgAcrylic = MutableStateFlow(false)
+    val globalBgAcrylic: StateFlow<Boolean> = _globalBgAcrylic
+
+    private val _globalBgBlur = MutableStateFlow(36)
+    val globalBgBlur: StateFlow<Int> = _globalBgBlur
+
+    fun loadGlobalBg(ctx: Context) {
+        val sp = ctx.getSharedPreferences("zhiyin", Context.MODE_PRIVATE)
+        _globalBgEnabled.value = sp.getBoolean("global_bg_enabled", false)
+        _globalBgPath.value = sp.getString("global_bg_path", "") ?: ""
+        _globalBgAcrylic.value = sp.getBoolean("global_bg_acrylic", false)
+        _globalBgBlur.value = sp.getInt("global_bg_blur", 36)
+    }
+
+    fun setGlobalBgEnabled(ctx: Context, enabled: Boolean) {
+        ctx.getSharedPreferences("zhiyin", Context.MODE_PRIVATE)
+            .edit().putBoolean("global_bg_enabled", enabled).apply()
+        _globalBgEnabled.value = enabled
+    }
+
+    fun setGlobalBgPath(ctx: Context, path: String) {
+        ctx.getSharedPreferences("zhiyin", Context.MODE_PRIVATE)
+            .edit().putString("global_bg_path", path).apply()
+        _globalBgPath.value = path
+    }
+
+    fun setGlobalBgAcrylic(ctx: Context, enabled: Boolean) {
+        ctx.getSharedPreferences("zhiyin", Context.MODE_PRIVATE)
+            .edit().putBoolean("global_bg_acrylic", enabled).apply()
+        _globalBgAcrylic.value = enabled
+    }
+
+    fun setGlobalBgBlur(ctx: Context, radius: Int) {
+        ctx.getSharedPreferences("zhiyin", Context.MODE_PRIVATE)
+            .edit().putInt("global_bg_blur", radius).apply()
+        _globalBgBlur.value = radius
+    }
 }

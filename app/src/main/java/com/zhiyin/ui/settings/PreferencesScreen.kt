@@ -45,7 +45,6 @@ import com.zhiyin.data.PreferenceApi
 import com.zhiyin.ui.vm.AppViewModel
 import kotlinx.coroutines.launch
 
-/** 喜好设置：选择感兴趣的标签，发现页"为你推荐"将据此推荐人设 */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PreferencesScreen(

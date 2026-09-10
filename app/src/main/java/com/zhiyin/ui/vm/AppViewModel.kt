@@ -32,6 +32,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Listene
         SettingsRepo.setThemeId(getApplication(), id)
     }
 
+    val globalBgEnabled get() = SettingsRepo.globalBgEnabled
+
+    val globalBgPath get() = SettingsRepo.globalBgPath
+
+    val globalBgAcrylic get() = SettingsRepo.globalBgAcrylic
+
+    val globalBgBlur get() = SettingsRepo.globalBgBlur
+
+    fun setGlobalBgEnabled(enabled: Boolean) {
+        SettingsRepo.setGlobalBgEnabled(getApplication(), enabled)
+    }
+
+    fun setGlobalBgPath(path: String) {
+        SettingsRepo.setGlobalBgPath(getApplication(), path)
+    }
+
+    fun setGlobalBgAcrylic(enabled: Boolean) {
+        SettingsRepo.setGlobalBgAcrylic(getApplication(), enabled)
+    }
+
+    fun setGlobalBgBlur(radius: Int) {
+        SettingsRepo.setGlobalBgBlur(getApplication(), radius)
+    }
+
     var friends by mutableStateOf<List<FriendManager.Friend>>(emptyList())
         private set
 
@@ -59,6 +83,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Listene
         SettingsRepo.loadDarkMode(app)
         SettingsRepo.loadNotifyEnabled(app)
         SettingsRepo.loadThemeId(app)
+        SettingsRepo.loadGlobalBg(app)
         EngineBus.register(this)
         if (AppSession.loggedIn.value) {
             loadFriends()

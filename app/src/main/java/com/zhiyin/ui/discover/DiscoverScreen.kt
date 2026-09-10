@@ -155,7 +155,6 @@ private fun CoverPlaceholder(name: String) {
     }
 }
 
-/** 榜单行（01/02/03 网易云式名次） */
 @Composable
 fun HotRankRow(
     p: PersonaLight,
