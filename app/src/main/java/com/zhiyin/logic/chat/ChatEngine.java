@@ -1240,7 +1240,7 @@ public class ChatEngine {
                         String key = appRole + "|" + trimmed;
                         if (seen.contains(key)) continue;
                         seen.add(key);
-                        MsgRepo.add(ctx, sid, appRole, content);
+                        MsgRepo.addRemoteIfAbsent(ctx, sid, appRole, content, 0);
                     }
                     notifyChanged();
                 }

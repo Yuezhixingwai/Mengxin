@@ -60,6 +60,7 @@ class MessageSyncReceiver : BroadcastReceiver() {
             val seen = context.getSharedPreferences("zhiyin_sync", 0)
             var seenSet = seen.getStringSet("seen", emptySet())?.toMutableSet() ?: mutableSetOf()
             if (seenSet.size > 400) seenSet = mutableSetOf()
+            val batches = LinkedHashMap<String, MutableList<MsgRepo.RemoteMsg>>()
             var dirty = false
             for (i in 0 until messages.length()) {
                 val msg = messages.getJSONObject(i)
@@ -71,7 +72,10 @@ class MessageSyncReceiver : BroadcastReceiver() {
                 if (seenSet.contains(key)) continue
                 seenSet.add(key)
                 dirty = true
-                MsgRepo.addRemoteIfAbsent(context, "persona_$persona", "ai", content, time)
+                batches.getOrPut(persona) { mutableListOf() }.add(MsgRepo.RemoteMsg("ai", content, time))
+            }
+            for ((persona, batch) in batches) {
+                MsgRepo.addRemoteBatchIfAbsent(context, "persona_$persona", batch)
             }
             if (dirty) seen.edit().putStringSet("seen", seenSet).apply()
         } catch (_: Exception) {
