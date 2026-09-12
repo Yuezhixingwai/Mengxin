@@ -350,7 +350,16 @@ public class ChatEngine {
                     finishSend();
                     return;
                 }
-                MsgRepo.replaceAt(ctx, sid, position, "ai", content);
+                if (content.contains("[pat]")) {
+                    MsgRepo.replaceAt(ctx, sid, position, "ai", content);
+                } else {
+                    List<String> segs = splitText(content);
+                    if (segs.size() <= 1) {
+                        MsgRepo.replaceAt(ctx, sid, position, "ai", content);
+                    } else {
+                        MsgRepo.replaceWithSegments(ctx, sid, position, "ai", segs);
+                    }
+                }
                 notifyChanged();
                 notifyNotice("已重新生成");
                 finishSend();

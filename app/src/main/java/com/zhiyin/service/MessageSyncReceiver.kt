@@ -71,7 +71,7 @@ class MessageSyncReceiver : BroadcastReceiver() {
                 if (seenSet.contains(key)) continue
                 seenSet.add(key)
                 dirty = true
-                MsgRepo.addSilent(context, "persona_$persona", "ai", content, time)
+                MsgRepo.addRemoteIfAbsent(context, "persona_$persona", "ai", content, time)
             }
             if (dirty) seen.edit().putStringSet("seen", seenSet).apply()
         } catch (_: Exception) {

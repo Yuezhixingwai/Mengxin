@@ -29,18 +29,39 @@ public class MsgRepo {
         } catch (Exception ignored) {}
     }
 
-    public static void addSilent(Context ctx, String sid, String role, String content, long time) {
+    public static boolean addRemoteIfAbsent(Context ctx, String sid, String role, String content, long time) {
         try {
             SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
             JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+            if (time > 0) {
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject o = arr.optJSONObject(i);
+                    if (o != null && o.optLong("time", 0) == time) return false;
+                }
+            }
+            String norm = normalizeMirrorText(content);
+            if (!norm.isEmpty()) {
+                List<String> roles = new ArrayList<>();
+                List<String> norms = new ArrayList<>();
+                collectNorms(arr, roles, norms);
+                for (int i = 0; i < roles.size(); i++) {
+                    if (role.equals(roles.get(i)) && norm.equals(norms.get(i))) return false;
+                }
+                if ("ai".equals(role) && isMirrorOfKnown(roles, norms, -1, norm)) return false;
+            }
             JSONObject o = new JSONObject();
             o.put("role", role);
             o.put("content", content);
             o.put("time", time > 0 ? time : System.currentTimeMillis());
             o.put("read", sid.equals(activeSessionId));
             arr.put(o);
+            healLocalDupes(arr);
             sp.edit().putString(sid, arr.toString()).apply();
-        } catch (Exception ignored) {}
+            return true;
+        } catch (Exception e) {
+            android.util.Log.w("MsgRepo", "addRemoteIfAbsent failed: " + e.getMessage());
+            return false;
+        }
     }
 
     private static void syncToMemoryService(Context ctx, String sid, String role, String content, long time) {
@@ -118,22 +139,41 @@ public class MsgRepo {
                                 for (int i = 0; i < localArr.length(); i++) {
                                     existingTimes.add(localArr.getJSONObject(i).optLong("time", 0));
                                 }
+                                List<String> knownRoles = new ArrayList<>();
+                                List<String> knownNorms = new ArrayList<>();
+                                collectNorms(localArr, knownRoles, knownNorms);
                                 for (int i = 0; i < remoteMsgs.length(); i++) {
                                     org.json.JSONObject rm = remoteMsgs.getJSONObject(i);
                                     long t = rm.optLong("time", 0);
-                                    if (t > 0 && existingTimes.contains(t)) {
-                                        continue;
-                                    }
                                     String rRole = rm.optString("role", "ai");
                                     if ("assistant".equals(rRole)) rRole = "ai";
                                     String rContent = rm.optString("content", "");
                                     if (rContent == null || rContent.trim().isEmpty()) continue;
+                                    if (t > 0 && existingTimes.contains(t)) {
+                                        continue;
+                                    }
+                                    String rNorm = normalizeMirrorText(rContent);
+                                    boolean dup = false;
+                                    if (!rNorm.isEmpty()) {
+                                        for (int k = 0; k < knownNorms.size() && !dup; k++) {
+                                            if (rRole.equals(knownRoles.get(k)) && rNorm.equals(knownNorms.get(k))) {
+                                                dup = true;
+                                            }
+                                        }
+                                        if (!dup && "ai".equals(rRole) && isMirrorOfKnown(knownRoles, knownNorms, -1, rNorm)) {
+                                            dup = true;
+                                        }
+                                    }
+                                    if (dup) continue;
                                     JSONObject o = new JSONObject();
                                     o.put("role", rRole);
                                     o.put("content", rContent);
                                     o.put("time", t);
                                     o.put("read", sessionId.equals(activeSessionId));
                                     localArr.put(o);
+                                    knownRoles.add(rRole);
+                                    knownNorms.add(rNorm);
+                                    if (t > 0) existingTimes.add(t);
                                     changed = true;
                                 }
                             }
@@ -179,43 +219,68 @@ public class MsgRepo {
                 .replaceAll("\\s+", "");
     }
 
+    private static void collectNorms(JSONArray localArr, List<String> roles, List<String> norms) throws JSONException {
+        for (int i = 0; i < localArr.length(); i++) {
+            JSONObject o = localArr.optJSONObject(i);
+            roles.add(o == null ? "" : o.optString("role", ""));
+            norms.add(o == null ? "" : normalizeMirrorText(o.optString("content", "")));
+        }
+    }
+
+    private static boolean isMirrorOfKnown(List<String> roles, List<String> norms, int skipIdx, String fullNorm) {
+        if (fullNorm.length() < 2) return false;
+        for (int start = 0; start < norms.size(); start++) {
+            if (start == skipIdx) continue;
+            if (!"ai".equals(roles.get(start)) || norms.get(start).isEmpty()) continue;
+            StringBuilder acc = new StringBuilder();
+            int pieces = 0;
+            for (int j = start; j < norms.size(); j++) {
+                if (j == skipIdx) continue;
+                if (!"ai".equals(roles.get(j)) || norms.get(j).isEmpty()) continue;
+                acc.append(norms.get(j));
+                pieces++;
+                if (acc.length() >= fullNorm.length()) {
+                    if (pieces >= 2 && acc.length() == fullNorm.length() && acc.toString().equals(fullNorm)) {
+                        return true;
+                    }
+                    break;
+                }
+            }
+        }
+        return false;
+    }
+
     private static boolean healLocalDupes(JSONArray localArr) throws JSONException {
         boolean removed = false;
+        for (int pass = 0; pass < 4; pass++) {
+            if (!healOnce(localArr)) break;
+            removed = true;
+        }
+        return removed;
+    }
+
+    private static boolean healOnce(JSONArray localArr) throws JSONException {
+        boolean changed = false;
         for (int i = 0; i < localArr.length(); i++) {
             JSONObject o = localArr.optJSONObject(i);
             if (o != null && "assistant".equals(o.optString("role", ""))) {
                 o.put("role", "ai");
-                removed = true;
+                changed = true;
             }
         }
+        List<String> roles = new ArrayList<>();
+        List<String> norms = new ArrayList<>();
+        collectNorms(localArr, roles, norms);
         for (int i = 0; i < localArr.length(); i++) {
             JSONObject full = localArr.optJSONObject(i);
             if (full == null || !"ai".equals(full.optString("role", ""))) continue;
-            String fullNorm = normalizeMirrorText(full.optString("content", ""));
-            if (fullNorm.length() < 4) continue;
-            boolean matched = false;
-            for (int start = 0; start < localArr.length() && !matched; start++) {
-                if (start == i) continue;
-                StringBuilder acc = new StringBuilder();
-                int pieces = 0;
-                for (int j = start; j < localArr.length(); j++) {
-                    if (j == i) continue;
-                    JSONObject p = localArr.optJSONObject(j);
-                    if (p == null || !"ai".equals(p.optString("role", ""))) continue;
-                    String pn = normalizeMirrorText(p.optString("content", ""));
-                    if (pn.isEmpty()) continue;
-                    acc.append(pn);
-                    pieces++;
-                    if (acc.length() == fullNorm.length()) {
-                        if (pieces >= 2 && acc.toString().equals(fullNorm)) matched = true;
-                        break;
-                    }
-                    if (acc.length() > fullNorm.length()) break;
-                }
-            }
-            if (matched) {
+            String fullNorm = norms.get(i);
+            if (fullNorm.isEmpty()) continue;
+            if (isMirrorOfKnown(roles, norms, i, fullNorm)) {
                 localArr.remove(i);
-                removed = true;
+                roles.remove(i);
+                norms.remove(i);
+                changed = true;
                 i--;
             }
         }
@@ -230,7 +295,7 @@ public class MsgRepo {
                 if (b == null || !aRole.equals(b.optString("role", ""))) continue;
                 if (aNorm.equals(normalizeMirrorText(b.optString("content", "")))) {
                     localArr.remove(j);
-                    removed = true;
+                    changed = true;
                 }
             }
         }
@@ -251,11 +316,11 @@ public class MsgRepo {
                 String c = o.optString("content", "").trim();
                 if (c.matches("^\\[表情(:[^\\]]*)?\\]$")) {
                     localArr.remove(i);
-                    removed = true;
+                    changed = true;
                 }
             }
         }
-        return removed;
+        return changed;
     }
 
     public static List<String[]> getAll(Context ctx, String sid) {
@@ -335,6 +400,61 @@ public class MsgRepo {
                     body.put("time", newTime);
                     body.put("platform", "android_app");
                     ApiGateway.memoryRequestSync(memUrl + "/api/chat/" + java.net.URLEncoder.encode(sid, "UTF-8"), "POST", body.toString(), userId);
+                } catch (Exception ignored) {}
+            }).start();
+        } catch (Exception ignored) {}
+    }
+
+    public static void replaceWithSegments(Context ctx, final String sid, int index, final String role, List<String> segments) {
+        try {
+            if (segments == null || segments.isEmpty()) return;
+            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
+            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+            if (index < 0 || index >= arr.length()) return;
+            final long oldTime = arr.optJSONObject(index).optLong("time", 0);
+            final long baseTime = System.currentTimeMillis();
+            JSONArray newArr = new JSONArray();
+            final List<String> segContents = new ArrayList<>();
+            final List<Long> segTimes = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                if (i == index) {
+                    for (int s = 0; s < segments.size(); s++) {
+                        long t = baseTime + s;
+                        JSONObject o = new JSONObject();
+                        o.put("role", role);
+                        o.put("content", segments.get(s));
+                        o.put("time", t);
+                        o.put("read", sid.equals(activeSessionId));
+                        newArr.put(o);
+                        segContents.add(segments.get(s));
+                        segTimes.add(t);
+                    }
+                } else {
+                    newArr.put(arr.get(i));
+                }
+            }
+            sp.edit().putString(sid, newArr.toString()).apply();
+            new Thread(() -> {
+                try {
+                    ApiGateway.ensureMemoryServiceUrl(ctx);
+                    String memUrl = ApiGateway.getMemoryServiceUrl();
+                    String userId = ApiGateway.getUserId(ctx);
+                    if (memUrl == null || memUrl.isEmpty() || userId == null || userId.isEmpty()) return;
+                    if (oldTime > 0) {
+                        try {
+                            ApiGateway.memoryRequestSync(memUrl + "/api/chat/" + java.net.URLEncoder.encode(sid, "UTF-8") + "?time=" + oldTime, "DELETE", null, userId);
+                        } catch (Exception ignored) {}
+                    }
+                    for (int s = 0; s < segContents.size(); s++) {
+                        try {
+                            org.json.JSONObject body = new org.json.JSONObject();
+                            body.put("role", role);
+                            body.put("content", segContents.get(s));
+                            body.put("time", segTimes.get(s));
+                            body.put("platform", "android_app");
+                            ApiGateway.memoryRequestSync(memUrl + "/api/chat/" + java.net.URLEncoder.encode(sid, "UTF-8"), "POST", body.toString(), userId);
+                        } catch (Exception ignored) {}
+                    }
                 } catch (Exception ignored) {}
             }).start();
         } catch (Exception ignored) {}
