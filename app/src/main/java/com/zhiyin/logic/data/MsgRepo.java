@@ -11,21 +11,27 @@ import java.util.List;
 public class MsgRepo {
     private static String activeSessionId = null;
 
+    private static final Object sLock = new Object();
+    private static final int MAX_REMOTE_AI_RUN = 6;
+    private static final int MIN_TAIL_MIRROR_LEN = 6;
+
     public static void setActiveSession(String sid) { activeSessionId = sid; }
     public static String getActiveSession() { return activeSessionId; }
 
     public static void add(Context ctx, String sid, String role, String content) {
         try {
-            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
-            JSONObject o = new JSONObject();
-            o.put("role", role);
-            o.put("content", content);
-            o.put("time", System.currentTimeMillis());
-            o.put("read", sid.equals(activeSessionId));
-            arr.put(o);
-            sp.edit().putString(sid, arr.toString()).apply();
-            syncToMemoryService(ctx, sid, role, content, o.optLong("time", 0));
+            synchronized (sLock) {
+                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
+                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                JSONObject o = new JSONObject();
+                o.put("role", role);
+                o.put("content", content);
+                o.put("time", System.currentTimeMillis());
+                o.put("read", sid.equals(activeSessionId));
+                arr.put(o);
+                sp.edit().putString(sid, arr.toString()).apply();
+                syncToMemoryService(ctx, sid, role, content, o.optLong("time", 0));
+            }
         } catch (Exception ignored) {}
     }
 
@@ -50,38 +56,40 @@ public class MsgRepo {
     public static boolean addRemoteBatchIfAbsent(Context ctx, String sid, List<RemoteMsg> msgs) {
         if (msgs == null || msgs.isEmpty()) return false;
         try {
-            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
-            List<String> roles = new ArrayList<>();
-            List<String> norms = new ArrayList<>();
-            collectNorms(arr, roles, norms);
-            boolean changed = false;
-            int i = 0;
-            while (i < msgs.size()) {
-                RemoteMsg m = msgs.get(i);
-                if (!"ai".equals(m.role)) {
-                    if (mergeRemote(arr, roles, norms, sid, m)) changed = true;
-                    i++;
-                    continue;
-                }
-                int j = i;
-                List<RemoteMsg> run = new ArrayList<>();
-                while (j < msgs.size() && "ai".equals(msgs.get(j).role)) {
-                    run.add(msgs.get(j));
-                    j++;
-                }
-                if (run.size() < 2 || !batchMirrorsKnown(roles, norms, run)) {
-                    for (RemoteMsg rm : run) {
-                        if (mergeRemote(arr, roles, norms, sid, rm)) changed = true;
+            synchronized (sLock) {
+                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
+                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                List<String> roles = new ArrayList<>();
+                List<String> norms = new ArrayList<>();
+                collectNorms(arr, roles, norms);
+                boolean changed = false;
+                int i = 0;
+                while (i < msgs.size()) {
+                    RemoteMsg m = msgs.get(i);
+                    if (!"ai".equals(m.role)) {
+                        if (mergeRemote(arr, roles, norms, sid, m)) changed = true;
+                        i++;
+                        continue;
                     }
+                    int j = i;
+                    List<RemoteMsg> run = new ArrayList<>();
+                    while (j < msgs.size() && "ai".equals(msgs.get(j).role)) {
+                        run.add(msgs.get(j));
+                        j++;
+                    }
+                    if (run.size() < 2 || !batchMirrorsKnown(roles, norms, run)) {
+                        for (RemoteMsg rm : run) {
+                            if (mergeRemote(arr, roles, norms, sid, rm)) changed = true;
+                        }
+                    }
+                    i = j;
                 }
-                i = j;
+                if (changed) {
+                    healLocalDupes(arr);
+                    sp.edit().putString(sid, arr.toString()).apply();
+                }
+                return changed;
             }
-            if (changed) {
-                healLocalDupes(arr);
-                sp.edit().putString(sid, arr.toString()).apply();
-            }
-            return changed;
         } catch (Exception e) {
             android.util.Log.w("MsgRepo", "addRemoteBatchIfAbsent failed: " + e.getMessage());
             return false;
@@ -114,6 +122,7 @@ public class MsgRepo {
                             && m.content.equals(o.optString("content", ""))) return false;
                 }
             }
+            if (isBlockedRemoteAi(arr, m.role, norm)) return false;
             JSONObject o = new JSONObject();
             o.put("role", m.role);
             o.put("content", m.content);
@@ -127,6 +136,27 @@ public class MsgRepo {
             android.util.Log.w("MsgRepo", "mergeRemote failed: " + e.getMessage());
             return false;
         }
+    }
+
+    private static boolean isBlockedRemoteAi(JSONArray arr, String role, String norm) {
+        if (!"ai".equals(role)) return false;
+        if (countTailAiRun(arr) >= MAX_REMOTE_AI_RUN) return true;
+        if (norm == null || norm.length() < MIN_TAIL_MIRROR_LEN) return false;
+        JSONObject last = arr.length() > 0 ? arr.optJSONObject(arr.length() - 1) : null;
+        if (last == null || !"ai".equals(last.optString("role", ""))) return false;
+        String lastNorm = normalizeMirrorText(last.optString("content", ""));
+        return lastNorm.length() > norm.length() && lastNorm.endsWith(norm);
+    }
+
+    private static int countTailAiRun(JSONArray arr) {
+        int count = 0;
+        for (int i = arr.length() - 1; i >= 0; i--) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o == null) break;
+            if ("ai".equals(o.optString("role", ""))) count++;
+            else break;
+        }
+        return count;
     }
 
     private static boolean batchMirrorsKnown(List<String> roles, List<String> norms, List<RemoteMsg> run) {
@@ -213,22 +243,7 @@ public class MsgRepo {
             final Context fCtx = ctx;
             final String sessionId = sid;
             new Thread(() -> {
-                boolean changed = false;
-                SharedPreferences sp = fCtx.getSharedPreferences("zhiyin_msgs", 0);
-                JSONArray localArr = new JSONArray();
-                try {
-                    localArr = new JSONArray(sp.getString(sessionId, "[]"));
-                } catch (org.json.JSONException e) {
-                    android.util.Log.w("MsgRepo", "parse local failed: " + e.getMessage());
-                }
-                try {
-                    if (healLocalDupes(localArr)) {
-                        sp.edit().putString(sessionId, localArr.toString()).apply();
-                        changed = true;
-                    }
-                } catch (Exception e) {
-                    android.util.Log.w("MsgRepo", "heal local failed: " + e.getMessage());
-                }
+                org.json.JSONArray remoteMsgs = null;
                 try {
                     com.zhiyin.logic.net.ApiGateway.ensureMemoryServiceUrl(fCtx);
                     String memUrl = com.zhiyin.logic.net.ApiGateway.getMemoryServiceUrl();
@@ -239,64 +254,86 @@ public class MsgRepo {
                                 memUrl + "/api/chat/" + java.net.URLEncoder.encode(sessionId, "UTF-8") + "?limit=100",
                                 "GET", null, userId);
                             org.json.JSONObject json = new org.json.JSONObject(resp);
-                            org.json.JSONArray remoteMsgs = json.optJSONArray("messages");
-                            if (remoteMsgs != null && remoteMsgs.length() > 0) {
-                                List<String> knownRoles = new ArrayList<>();
-                                List<String> knownNorms = new ArrayList<>();
-                                collectNorms(localArr, knownRoles, knownNorms);
-                                List<RemoteMsg> remoteList = new ArrayList<>();
-                                for (int i = 0; i < remoteMsgs.length(); i++) {
-                                    org.json.JSONObject rm = remoteMsgs.getJSONObject(i);
-                                    String rRole = rm.optString("role", "ai");
-                                    if ("assistant".equals(rRole)) rRole = "ai";
-                                    String rContent = rm.optString("content", "");
-                                    if (rContent == null || rContent.trim().isEmpty()) continue;
-                                    remoteList.add(new RemoteMsg(rRole, rContent, rm.optLong("time", 0)));
-                                }
-                                int ri = 0;
-                                while (ri < remoteList.size()) {
-                                    RemoteMsg head = remoteList.get(ri);
-                                    if (!"ai".equals(head.role)) {
-                                        if (mergeSynced(localArr, knownRoles, knownNorms, sessionId, head)) changed = true;
-                                        ri++;
-                                        continue;
-                                    }
-                                    int rj = ri;
-                                    List<RemoteMsg> run = new ArrayList<>();
-                                    while (rj < remoteList.size() && "ai".equals(remoteList.get(rj).role)) {
-                                        run.add(remoteList.get(rj));
-                                        rj++;
-                                    }
-                                    if (run.size() < 2 || !batchMirrorsKnown(knownRoles, knownNorms, run)) {
-                                        for (RemoteMsg rm : run) {
-                                            if (mergeSynced(localArr, knownRoles, knownNorms, sessionId, rm)) changed = true;
-                                        }
-                                    }
-                                    ri = rj;
-                                }
-                            }
+                            remoteMsgs = json.optJSONArray("messages");
                         }
                     }
                 } catch (Exception e) {
                     android.util.Log.w("MsgRepo", "sync from 9005 failed: " + e.getMessage());
                 }
-                try {
-                    if (healLocalDupes(localArr)) {
-                        changed = true;
-                    }
-                } catch (Exception e) {
-                    android.util.Log.w("MsgRepo", "heal after merge failed: " + e.getMessage());
-                }
-                if (changed) {
+                boolean changed = false;
+                org.json.JSONArray remoteMsgsRef = remoteMsgs;
+                synchronized (sLock) {
+                    SharedPreferences sp = fCtx.getSharedPreferences("zhiyin_msgs", 0);
+                    JSONArray localArr = new JSONArray();
                     try {
-                        JSONArray sorted = new JSONArray();
-                        java.util.List<JSONObject> list = new java.util.ArrayList<>();
-                        for (int i = 0; i < localArr.length(); i++) list.add(localArr.getJSONObject(i));
-                        java.util.Collections.sort(list, (a, b) -> Long.compare(a.optLong("time", 0), b.optLong("time", 0)));
-                        for (JSONObject o : list) sorted.put(o);
-                        sp.edit().putString(sessionId, sorted.toString()).apply();
+                        localArr = new JSONArray(sp.getString(sessionId, "[]"));
+                    } catch (org.json.JSONException e) {
+                        android.util.Log.w("MsgRepo", "parse local failed: " + e.getMessage());
+                    }
+                    try {
+                        if (healLocalDupes(localArr)) {
+                            changed = true;
+                        }
                     } catch (Exception e) {
-                        android.util.Log.w("MsgRepo", "sort local failed: " + e.getMessage());
+                        android.util.Log.w("MsgRepo", "heal local failed: " + e.getMessage());
+                    }
+                    if (remoteMsgsRef != null && remoteMsgsRef.length() > 0) {
+                        try {
+                            List<String> knownRoles = new ArrayList<>();
+                            List<String> knownNorms = new ArrayList<>();
+                            collectNorms(localArr, knownRoles, knownNorms);
+                            List<RemoteMsg> remoteList = new ArrayList<>();
+                            for (int i = 0; i < remoteMsgsRef.length(); i++) {
+                                org.json.JSONObject rm = remoteMsgsRef.getJSONObject(i);
+                                String rRole = rm.optString("role", "ai");
+                                if ("assistant".equals(rRole)) rRole = "ai";
+                                String rContent = rm.optString("content", "");
+                                if (rContent == null || rContent.trim().isEmpty()) continue;
+                                remoteList.add(new RemoteMsg(rRole, rContent, rm.optLong("time", 0)));
+                            }
+                            int ri = 0;
+                            while (ri < remoteList.size()) {
+                                RemoteMsg head = remoteList.get(ri);
+                                if (!"ai".equals(head.role)) {
+                                    if (mergeSynced(localArr, knownRoles, knownNorms, sessionId, head)) changed = true;
+                                    ri++;
+                                    continue;
+                                }
+                                int rj = ri;
+                                List<RemoteMsg> run = new ArrayList<>();
+                                while (rj < remoteList.size() && "ai".equals(remoteList.get(rj).role)) {
+                                    run.add(remoteList.get(rj));
+                                    rj++;
+                                }
+                                if (run.size() < 2 || !batchMirrorsKnown(knownRoles, knownNorms, run)) {
+                                    for (RemoteMsg rm : run) {
+                                        if (mergeSynced(localArr, knownRoles, knownNorms, sessionId, rm)) changed = true;
+                                    }
+                                }
+                                ri = rj;
+                            }
+                        } catch (Exception e) {
+                            android.util.Log.w("MsgRepo", "merge from 9005 failed: " + e.getMessage());
+                        }
+                    }
+                    try {
+                        if (healLocalDupes(localArr)) {
+                            changed = true;
+                        }
+                    } catch (Exception e) {
+                        android.util.Log.w("MsgRepo", "heal after merge failed: " + e.getMessage());
+                    }
+                    if (changed) {
+                        try {
+                            JSONArray sorted = new JSONArray();
+                            java.util.List<JSONObject> list = new java.util.ArrayList<>();
+                            for (int i = 0; i < localArr.length(); i++) list.add(localArr.getJSONObject(i));
+                            java.util.Collections.sort(list, (a, b) -> Long.compare(a.optLong("time", 0), b.optLong("time", 0)));
+                            for (JSONObject o : list) sorted.put(o);
+                            sp.edit().putString(sessionId, sorted.toString()).apply();
+                        } catch (Exception e) {
+                            android.util.Log.w("MsgRepo", "sort local failed: " + e.getMessage());
+                        }
                     }
                 }
                 final SyncCallback fCb = cb;
@@ -330,6 +367,7 @@ public class MsgRepo {
                 }
                 if (!dup && "ai".equals(m.role) && isMirrorOfKnown(knownRoles, knownNorms, -1, rNorm)) dup = true;
             }
+            if (!dup && isBlockedRemoteAi(localArr, m.role, rNorm)) dup = true;
             if (dup) return false;
             JSONObject o = new JSONObject();
             o.put("role", m.role);
@@ -421,6 +459,22 @@ public class MsgRepo {
                 i--;
             }
         }
+        for (int i = 1; i < localArr.length(); i++) {
+            JSONObject prev = localArr.optJSONObject(i - 1);
+            JSONObject cur = localArr.optJSONObject(i);
+            if (prev == null || cur == null) continue;
+            if (!"ai".equals(prev.optString("role", "")) || !"ai".equals(cur.optString("role", ""))) continue;
+            String pNorm = norms.get(i - 1);
+            String cNorm = norms.get(i);
+            if (cNorm.length() < MIN_TAIL_MIRROR_LEN) continue;
+            if (pNorm.length() > cNorm.length() && pNorm.endsWith(cNorm)) {
+                localArr.remove(i);
+                roles.remove(i);
+                norms.remove(i);
+                changed = true;
+                i--;
+            }
+        }
         for (int i = 0; i < localArr.length(); i++) {
             JSONObject a = localArr.optJSONObject(i);
             if (a == null) continue;
@@ -473,7 +527,9 @@ public class MsgRepo {
     }
 
     public static void delete(Context ctx, String sid) {
-        ctx.getSharedPreferences("zhiyin_msgs", 0).edit().remove(sid).apply();
+        synchronized (sLock) {
+            ctx.getSharedPreferences("zhiyin_msgs", 0).edit().remove(sid).apply();
+        }
         try {
             final Context fCtx = ctx;
             final String fSid = sid;
@@ -494,30 +550,36 @@ public class MsgRepo {
 
     public static void deleteAt(Context ctx, String sid, int index) {
         try {
-            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
-            if (index < 0 || index >= arr.length()) return;
-            JSONArray newArr = new JSONArray();
-            for (int i = 0; i < arr.length(); i++) {
-                if (i != index) newArr.put(arr.get(i));
+            synchronized (sLock) {
+                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
+                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                if (index < 0 || index >= arr.length()) return;
+                JSONArray newArr = new JSONArray();
+                for (int i = 0; i < arr.length(); i++) {
+                    if (i != index) newArr.put(arr.get(i));
+                }
+                sp.edit().putString(sid, newArr.toString()).apply();
             }
-            sp.edit().putString(sid, newArr.toString()).apply();
         } catch (Exception ignored) {}
     }
 
     public static void replaceAt(Context ctx, final String sid, int index, String role, String content) {
         try {
-            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
-            if (index < 0 || index >= arr.length()) return;
-            final long oldTime = arr.optJSONObject(index).optLong("time", 0);
-            final long newTime = System.currentTimeMillis();
-            JSONObject newObj = new JSONObject();
-            newObj.put("role", role);
-            newObj.put("content", content);
-            newObj.put("time", newTime);
-            arr.put(index, newObj);
-            sp.edit().putString(sid, arr.toString()).apply();
+            final long oldTime;
+            final long newTime;
+            synchronized (sLock) {
+                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
+                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                if (index < 0 || index >= arr.length()) return;
+                oldTime = arr.optJSONObject(index).optLong("time", 0);
+                newTime = System.currentTimeMillis();
+                JSONObject newObj = new JSONObject();
+                newObj.put("role", role);
+                newObj.put("content", content);
+                newObj.put("time", newTime);
+                arr.put(index, newObj);
+                sp.edit().putString(sid, arr.toString()).apply();
+            }
             final String fRole = role;
             final String fContent = content;
             new Thread(() -> {
@@ -546,31 +608,35 @@ public class MsgRepo {
         try {
             if (segments == null || segments.isEmpty()) return;
             SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
-            if (index < 0 || index >= arr.length()) return;
-            final long oldTime = arr.optJSONObject(index).optLong("time", 0);
-            final long baseTime = System.currentTimeMillis();
-            JSONArray newArr = new JSONArray();
+            final long oldTime;
+            final long baseTime;
             final List<String> segContents = new ArrayList<>();
             final List<Long> segTimes = new ArrayList<>();
-            for (int i = 0; i < arr.length(); i++) {
-                if (i == index) {
-                    for (int s = 0; s < segments.size(); s++) {
-                        long t = baseTime + s;
-                        JSONObject o = new JSONObject();
-                        o.put("role", role);
-                        o.put("content", segments.get(s));
-                        o.put("time", t);
-                        o.put("read", sid.equals(activeSessionId));
-                        newArr.put(o);
-                        segContents.add(segments.get(s));
-                        segTimes.add(t);
+            synchronized (sLock) {
+                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                if (index < 0 || index >= arr.length()) return;
+                oldTime = arr.optJSONObject(index).optLong("time", 0);
+                baseTime = System.currentTimeMillis();
+                JSONArray newArr = new JSONArray();
+                for (int i = 0; i < arr.length(); i++) {
+                    if (i == index) {
+                        for (int s = 0; s < segments.size(); s++) {
+                            long t = baseTime + s;
+                            JSONObject o = new JSONObject();
+                            o.put("role", role);
+                            o.put("content", segments.get(s));
+                            o.put("time", t);
+                            o.put("read", sid.equals(activeSessionId));
+                            newArr.put(o);
+                            segContents.add(segments.get(s));
+                            segTimes.add(t);
+                        }
+                    } else {
+                        newArr.put(arr.get(i));
                     }
-                } else {
-                    newArr.put(arr.get(i));
                 }
+                sp.edit().putString(sid, newArr.toString()).apply();
             }
-            sp.edit().putString(sid, newArr.toString()).apply();
             new Thread(() -> {
                 try {
                     ApiGateway.ensureMemoryServiceUrl(ctx);
@@ -616,18 +682,20 @@ public class MsgRepo {
 
     public static void markAllRead(Context ctx, String sid) {
         try {
-            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
-            boolean changed = false;
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.getJSONObject(i);
-                if (!o.optBoolean("read", false)) {
-                    o.put("read", true);
-                    changed = true;
+            synchronized (sLock) {
+                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
+                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                boolean changed = false;
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject o = arr.getJSONObject(i);
+                    if (!o.optBoolean("read", false)) {
+                        o.put("read", true);
+                        changed = true;
+                    }
                 }
-            }
-            if (changed) {
-                sp.edit().putString(sid, arr.toString()).apply();
+                if (changed) {
+                    sp.edit().putString(sid, arr.toString()).apply();
+                }
             }
         } catch (Exception ignored) {}
     }
@@ -646,16 +714,18 @@ public class MsgRepo {
 
     public static void updateLast(Context ctx, String sid, String oldPrefix, String newContent) {
         try {
-            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
-            for (int i = arr.length() - 1; i >= 0; i--) {
-                JSONObject o = arr.getJSONObject(i);
-                if (o.optString("content", "").startsWith(oldPrefix)) {
-                    o.put("content", newContent);
-                    break;
+            synchronized (sLock) {
+                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
+                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                for (int i = arr.length() - 1; i >= 0; i--) {
+                    JSONObject o = arr.getJSONObject(i);
+                    if (o.optString("content", "").startsWith(oldPrefix)) {
+                        o.put("content", newContent);
+                        break;
+                    }
                 }
+                sp.edit().putString(sid, arr.toString()).apply();
             }
-            sp.edit().putString(sid, arr.toString()).apply();
         } catch (Exception ignored) {}
     }
 
