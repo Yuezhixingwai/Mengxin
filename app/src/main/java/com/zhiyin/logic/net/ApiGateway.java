@@ -8,6 +8,8 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.crypto.Cipher;
@@ -138,6 +140,35 @@ public class ApiGateway {
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     private static final Handler handler = new Handler(Looper.getMainLooper());
 
+    // ===== 实名闸门（2026-09-24）=====
+    // 服务端判定"未实名"时，会在任一 /api 响应里带 need_real_name=true（HTTP 200 + 中文话术）。
+    // 客户端只在这里统一识别一次，UI 层（MainActivity）注册监听即可立刻弹出实名窗，
+    // 不再依赖"进主界面时拉一次 /api/auth/real-name-required"这一条路径。
+    // 注意：服务端因查库异常而拦截时【不会】带该标记，避免已实名用户被关不掉的实名窗卡死。
+    public interface RealNameListener { void onRealNameRequired(); }
+
+    private static final List<RealNameListener> realNameListeners = new CopyOnWriteArrayList<>();
+
+    public static void addRealNameListener(RealNameListener l) {
+        if (l != null && !realNameListeners.contains(l)) realNameListeners.add(l);
+    }
+
+    public static void removeRealNameListener(RealNameListener l) {
+        if (l != null) realNameListeners.remove(l);
+    }
+
+    private static void checkRealNameFlag(String body) {
+        try {
+            if (body == null || body.indexOf("need_real_name") < 0) return;
+            if (!new org.json.JSONObject(body).optBoolean("need_real_name", false)) return;
+            for (final RealNameListener l : realNameListeners) {
+                handler.post(new Runnable() {
+                    @Override public void run() { try { l.onRealNameRequired(); } catch (Exception ignored) {} }
+                });
+            }
+        } catch (Exception ignored) {}
+    }
+
     private static SSLSocketFactory sslSocketFactory;
     private static HostnameVerifier hostnameVerifier;
     static {
@@ -236,6 +267,9 @@ public class ApiGateway {
             if (PayloadCipher.isEncrypted(body)) body = PayloadCipher.unwrap(body);
         } catch (Exception ignored) {}
 
+        // 实名闸门（2026-09-24）：未实名的响应里带 need_real_name=true → 通知 UI 弹实名窗
+        checkRealNameFlag(body);
+
         if (code < 200 || code >= 300) throw new Exception("HTTP " + code + ": " + body.substring(0, Math.min(300, body.length())));
         return body;
     }
@@ -285,6 +319,8 @@ public class ApiGateway {
         int code = conn.getResponseCode();
         String body = readAll(code < 400 ? conn.getInputStream() : conn.getErrorStream());
         conn.disconnect();
+        // 实名闸门（2026-09-24）：上传接口同样识别 need_real_name 标记
+        checkRealNameFlag(body);
         if (code < 200 || code >= 300) throw new Exception("HTTP " + code + ": " + body.substring(0, Math.min(300, body.length())));
         return body;
     }

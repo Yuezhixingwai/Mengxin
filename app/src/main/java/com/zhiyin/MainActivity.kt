@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,6 +36,7 @@ import com.zhiyin.data.AccountApi.RealNameCheck
 import com.zhiyin.data.AppSession
 import com.zhiyin.data.PaymentPasswordManager
 import com.zhiyin.data.PrivacyManager
+import com.zhiyin.logic.net.ApiGateway
 import com.zhiyin.ui.MainScaffold
 import com.zhiyin.ui.SplashContent
 import com.zhiyin.ui.auth.AuthScreen
@@ -180,6 +182,26 @@ class MainActivity : ComponentActivity() {
                                     dismissText = null,
                                 )
                             }
+                        }
+
+                        // 实名闸门（2026-09-24）：服务端任一接口返回 need_real_name=true 就立刻弹实名窗。
+                        // 修复的漏洞：原先只在进主界面时拉一次 /api/auth/real-name-required，
+                        // 拉取失败（超时/换网络）会被静默吞掉且不再重试 → 用户可永久免实名使用。
+                        var needRealName by remember { mutableStateOf(false) }
+                        DisposableEffect(Unit) {
+                            val listener = ApiGateway.RealNameListener { needRealName = true }
+                            ApiGateway.addRealNameListener(listener)
+                            onDispose { ApiGateway.removeRealNameListener(listener) }
+                        }
+                        // 与上面 realNameState.required 的弹窗互斥，避免叠两层
+                        if (needRealName && realNameState?.required != true) {
+                            RealNameVerifyDialog(
+                                onVerified = {
+                                    needRealName = false
+                                    realNameState = null
+                                },
+                                onToast = { appVm.showToast(it) },
+                            )
                         }
                     }
                     }
