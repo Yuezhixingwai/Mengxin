@@ -522,7 +522,7 @@ fun MeScreen(
                 )
                 val json = JSONObject(resp)
                 val b = json.optDouble("balance", 0.0)
-                val t = "今日已用 ${fmtCoinDisplay(json.optDouble("today_coins", 0.0))} 启辰币 · 调用 ${json.optInt("today_calls", 0)} 次"
+                val t = "今日已用 ${fmtCoinDisplay(json.optDouble("today_coins", 0.0))} 灵心币 · 调用 ${json.optInt("today_calls", 0)} 次"
                 withContext(Dispatchers.Main) {
                     coinBalance = b
                     coinToday = t
@@ -592,7 +592,7 @@ fun MeScreen(
             ) {
                 Column {
                     Text(
-                        "启辰币余额",
+                        "灵心币余额",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

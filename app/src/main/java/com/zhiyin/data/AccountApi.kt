@@ -303,6 +303,75 @@ object AccountApi {
         }
     }
 
+    // ===== 每日签到（送灵心币）=====
+    data class CheckinState(val checkedIn: Boolean, val reward: Int, val coins: Double, val message: String)
+
+    /** 查询今日是否已签到（只读，用于按钮状态） */
+    suspend fun checkinStatus(): Result<CheckinState> = withContext(Dispatchers.IO) {
+        try {
+            val ctx = com.zhiyin.logic.AppHolder.app()!!
+            val resp = ApiGateway.requestSync(
+                ApiGateway.ZHIYIN_BASE + "/api/user/checkin", "GET", null, ApiGateway.getToken(ctx)
+            )
+            val json = JSONObject(resp)
+            Result.success(
+                CheckinState(
+                    checkedIn = json.optBoolean("checkedIn", false),
+                    reward = json.optInt("reward", 3),
+                    coins = json.optDouble("coins", 0.0),
+                    message = "",
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(Exception(extractError(e)))
+        }
+    }
+
+    /** 执行签到（同一自然日重复调用不会重复发币，服务端原子判定） */
+    suspend fun checkin(): Result<CheckinState> = withContext(Dispatchers.IO) {
+        try {
+            val ctx = com.zhiyin.logic.AppHolder.app()!!
+            val resp = ApiGateway.requestSync(
+                ApiGateway.ZHIYIN_BASE + "/api/user/checkin", "POST", "{}", ApiGateway.getToken(ctx)
+            )
+            val json = JSONObject(resp)
+            Result.success(
+                CheckinState(
+                    checkedIn = true,
+                    reward = json.optInt("reward", 3),
+                    coins = json.optDouble("coins", 0.0),
+                    message = json.optString("message", ""),
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(Exception(extractError(e)))
+        }
+    }
+
+    // ===== 灵心币 ↔ 钱包余额 兑换 =====
+    data class ExchangeResult(val coinBalance: Double, val balance: Double, val message: String)
+
+    /** direction: coin2cash（1 灵心币→800 余额）/ cash2coin（1000 余额→1 灵心币） */
+    suspend fun exchange(direction: String, amount: Int): Result<ExchangeResult> = withContext(Dispatchers.IO) {
+        try {
+            val ctx = com.zhiyin.logic.AppHolder.app()!!
+            val body = JSONObject().put("direction", direction).put("amount", amount).toString()
+            val resp = ApiGateway.requestSync(
+                ApiGateway.ZHIYIN_BASE + "/api/user/exchange", "POST", body, ApiGateway.getToken(ctx)
+            )
+            val json = JSONObject(resp)
+            Result.success(
+                ExchangeResult(
+                    coinBalance = json.optDouble("coin_balance", 0.0),
+                    balance = json.optDouble("balance", 0.0),
+                    message = json.optString("message", ""),
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(Exception(extractError(e)))
+        }
+    }
+
     data class Announcement(val id: Int, val title: String, val content: String)
 
     suspend fun activeAnnouncement(): Announcement? = withContext(Dispatchers.IO) {

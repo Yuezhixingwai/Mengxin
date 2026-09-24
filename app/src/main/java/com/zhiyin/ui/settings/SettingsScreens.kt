@@ -445,11 +445,15 @@ fun WalletScreen(appVm: AppViewModel, onBack: () -> Unit) {
     var wallet by remember { mutableStateOf<AccountApi.WalletData?>(null) }
     var payEnabled by remember { mutableStateOf(PaymentPasswordManager.isSet()) }
     var payPassSetup by remember { mutableStateOf(false) }
+    var coinBalance by remember { mutableStateOf(0.0) }
+    var showExchange by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    // 关掉兑换弹窗时也重跑一次，兑换后的新余额即时反映到页面上
+    LaunchedEffect(showExchange) {
         AccountApi.wallet()
             .onSuccess { wallet = it }
             .onFailure { appVm.showToast("加载失败: ${it.message}") }
+        AccountApi.checkinStatus().onSuccess { coinBalance = it.coins }
         loading = false
     }
 
@@ -510,6 +514,37 @@ fun WalletScreen(appVm: AppViewModel, onBack: () -> Unit) {
                 CardContainer {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                         ListItem(
+                            modifier = Modifier.clickable { showExchange = true },
+                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            leadingContent = {
+                                Icon(
+                                    Icons.Rounded.SwapHoriz,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                )
+                            },
+                            headlineContent = {
+                                Text("兑换", style = MaterialTheme.typography.bodyMedium)
+                            },
+                            supportingContent = {
+                                Text(
+                                    "1 灵心币 = 800 余额 · 1000 余额 = 1 灵心币",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                            trailingContent = {
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                        )
+                    }
+                }
+                CardContainer {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        ListItem(
                             modifier = Modifier.clickable { payPassSetup = true },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                             leadingContent = {
@@ -549,6 +584,121 @@ fun WalletScreen(appVm: AppViewModel, onBack: () -> Unit) {
             onDismiss = { payPassSetup = false },
             onChanged = { payEnabled = PaymentPasswordManager.isSet() },
         )
+    }
+
+    if (showExchange) {
+        ExchangeDialog(
+            coinBalance = coinBalance,
+            walletBalance = wallet?.balance ?: 0.0,
+            onDismiss = { showExchange = false },
+        )
+    }
+}
+
+/**
+ * 灵心币 ↔ 钱包余额 兑换弹窗（沿用 LingXinDialog 风格）
+ * 1 灵心币 = 800 余额；1000 余额 = 1 灵心币
+ */
+@Composable
+private fun ExchangeDialog(
+    coinBalance: Double,
+    walletBalance: Double,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var direction by remember { mutableStateOf("coin2cash") }   // coin2cash: 币→余额；cash2coin: 余额→币
+    var amountText by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var resultMsg by remember { mutableStateOf("") }
+    var okDone by remember { mutableStateOf(false) }
+
+    val amount = amountText.toIntOrNull() ?: 0
+    val isCoin2Cash = direction == "coin2cash"
+    val preview = if (isCoin2Cash) "可得到 ${amount * 800} 钱包余额" else "将扣除 ${amount * 1000} 钱包余额"
+
+    LingXinDialog(
+        onDismiss = { if (!busy) onDismiss() },
+        title = "兑换",
+        confirmText = if (busy) "兑换中…" else "确认兑换",
+        onConfirm = {
+            if (!busy) {
+                if (amount <= 0) {
+                    resultMsg = "请输入大于 0 的整数"
+                } else {
+                    busy = true
+                    resultMsg = ""
+                    scope.launch {
+                        AccountApi.exchange(direction, amount)
+                            .onSuccess {
+                                okDone = true
+                                resultMsg = it.message.ifEmpty { "兑换成功" }
+                            }
+                            .onFailure {
+                                okDone = false
+                                resultMsg = it.message ?: "兑换失败"
+                            }
+                        busy = false
+                    }
+                }
+            }
+        },
+    ) {
+        Spacer(Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf("coin2cash" to "灵心币 → 余额", "cash2coin" to "余额 → 灵心币").forEach { (v, label) ->
+                val selected = direction == v
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier.weight(1f).clickable(enabled = !busy) {
+                        direction = v
+                        resultMsg = ""
+                    },
+                ) {
+                    Text(
+                        label,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        OutlinedTextField(
+            value = amountText,
+            onValueChange = { s -> amountText = s.filter { it.isDigit() }.take(6) },
+            label = { Text("要兑换的灵心币数量") },
+            singleLine = true,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (amount > 0) preview else "1 灵心币 = 800 余额 · 1000 余额 = 1 灵心币",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "当前：${fmtMoney(coinBalance)} 灵心币 · ${fmtMoney(walletBalance)} 钱包余额",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (resultMsg.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                resultMsg,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (okDone) Color(0xFF34B78F) else MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 

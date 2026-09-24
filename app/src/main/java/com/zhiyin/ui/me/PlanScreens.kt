@@ -107,7 +107,7 @@ private val yearlyPlan = PlanSpec(
     tag = "省41%",
     features = listOf(
         "连续包月全部权益",
-        "每月赠 500 启辰币",
+        "每月赠 500 灵心币",
         "生日专属惊喜礼包",
     ),
 )
@@ -217,8 +217,8 @@ fun RechargeScreen(
     val customValue = customAmount.toDoubleOrNull()
     val total = if (customValue != null && customValue > 0) "¥" + fmtAmount(customValue)
     else coinPackages.getOrNull(selectedIndex)?.priceLabel ?: "¥0"
-    val totalNote = if (customValue != null && customValue > 0) "自定义充值 · 1元=10启辰币"
-    else "1元=10启辰币 · 充值后立即到账"
+    val totalNote = if (customValue != null && customValue > 0) "自定义充值 · 1元=10灵心币"
+    else "1元=10灵心币 · 充值后立即到账"
 
     Column(
         modifier = Modifier
@@ -227,7 +227,7 @@ fun RechargeScreen(
     ) {
         TopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("充值启辰币", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
+            title = { Text("充值灵心币", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
             navigationIcon = {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
             },
@@ -310,7 +310,7 @@ private fun MemberHeroCard(onOpenRecharge: () -> Unit) {
                     Spacer(Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "充值启辰币",
+                            "充值灵心币",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -348,7 +348,7 @@ private fun BenefitSection() {
                 BenefitRow(1, "解锁全部 AI 人设", "官方与自定义人设、群聊角色随心切换")
                 BenefitRow(2, "无限畅聊", "消息额度不再受限，长聊不中断")
                 BenefitRow(3, "专属表情包与装扮", "会员限定表情、聊天背景与主题色")
-                BenefitRow(4, "启辰币礼遇", "年费会员每月额外赠送启辰币")
+                BenefitRow(4, "灵心币礼遇", "年费会员每月额外赠送灵心币")
                 BenefitRow(5, "优先响应通道", "高峰时段优先排队，专属客服支持")
             }
         }
@@ -552,7 +552,7 @@ private fun RechargeMemberBanner(onOpenSubscription: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    "年费会员每月额外赠 500 启辰币",
+                    "年费会员每月额外赠 500 灵心币",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -576,7 +576,7 @@ private fun BalanceCard(balance: Double?) {
                 .padding(horizontal = 18.dp, vertical = 16.dp),
         ) {
             Text(
-                "启辰币余额",
+                "灵心币余额",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -689,7 +689,7 @@ private fun CoinPackageCard(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "${pkg.coins} 启辰币",
+                    "${pkg.coins} 灵心币",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -725,8 +725,8 @@ private fun CoinPackageCard(
 @Composable
 private fun RechargeNotes() {
     Text(
-        "· 启辰币为虚拟商品，充值成功后立即到账，不支持退款\n" +
-            "· 1元 = 10启辰币，多充多赠\n" +
+        "· 灵心币为虚拟商品，充值成功后立即到账，不支持退款\n" +
+            "· 1元 = 10灵心币，多充多赠\n" +
             "· 未成年人请在监护人指导下理性消费",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

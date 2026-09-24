@@ -106,7 +106,7 @@ fun QuotaScreen(appVm: AppViewModel, onBack: () -> Unit) {
                 onClick = {
                     useOfficial = true
                     prefs.edit().putBoolean("use_official_quota", true).apply()
-                    appVm.showToast("已切换到官方配额（启辰币）")
+                    appVm.showToast("已切换到官方配额（灵心币）")
                 },
                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
             ) { Text("官方配额") }

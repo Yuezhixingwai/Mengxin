@@ -105,6 +105,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zhiyin.data.AccountApi
 import com.zhiyin.data.ImageUtils
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.data.MsgRepo
@@ -846,7 +847,7 @@ private fun MainContent(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             when (MainTab.entries[currentTab]) {
-                MainTab.Discover -> MainTopAppBar("发现")
+                MainTab.Discover -> MainTopAppBar("发现", trailing = { CheckinButton(appVm) })
                 MainTab.Chats -> MainTopAppBar(
                     title = "灵心",
                     onSearch = onSearch,
@@ -1035,7 +1036,12 @@ private fun MainContent(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainTopAppBar(title: String, onSearch: (() -> Unit)? = null, onMore: (() -> Unit)? = null) {
+private fun MainTopAppBar(
+    title: String,
+    onSearch: (() -> Unit)? = null,
+    onMore: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surface,
@@ -1052,8 +1058,53 @@ private fun MainTopAppBar(title: String, onSearch: (() -> Unit)? = null, onMore:
                     Icon(Icons.Filled.Add, contentDescription = "新建")
                 }
             }
+            trailing?.invoke()
         },
     )
+}
+
+/**
+ * 「发现」标题栏右侧的签到按钮：每天可领 3 灵心币。
+ * 是否已签到以服务端为准（进入页面查一次，签到后置为已签），重复点击只给提示、不会重复发币。
+ */
+@Composable
+private fun CheckinButton(appVm: AppViewModel) {
+    var checkedIn by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var trigger by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        AccountApi.checkinStatus().onSuccess { checkedIn = it.checkedIn }
+    }
+    LaunchedEffect(trigger) {
+        if (trigger == 0) return@LaunchedEffect
+        busy = true
+        AccountApi.checkin()
+            .onSuccess { st ->
+                checkedIn = true
+                appVm.showToast(st.message.ifEmpty { "签到成功，获得 ${st.reward} 灵心币" })
+            }
+            .onFailure { appVm.showToast(it.message ?: "签到失败") }
+        busy = false
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = if (checkedIn) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .padding(end = 12.dp)
+            .clickable(enabled = !busy) {
+                if (checkedIn) appVm.showToast("今天已经签到过了，明天再来～") else trigger++
+            },
+    ) {
+        Text(
+            text = if (busy) "签到中" else if (checkedIn) "已签到" else "签到",
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (checkedIn) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary,
+        )
+    }
 }
 
 @Composable
