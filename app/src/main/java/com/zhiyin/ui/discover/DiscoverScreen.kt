@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +67,8 @@ import com.zhiyin.ui.DefaultAvatar
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.components.RemoteImage
 import com.zhiyin.ui.vm.AppViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -264,6 +267,7 @@ fun DiscoverScreen(
     var gridPage by remember { mutableIntStateOf(0) }
     var gridTotal by remember { mutableIntStateOf(Int.MAX_VALUE) }
     var loadingMore by remember { mutableStateOf(false) }
+    var gridFailed by remember { mutableStateOf(false) }
     var unread by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
 
@@ -287,13 +291,21 @@ fun DiscoverScreen(
 
     fun loadBase() {
         scope.launch {
-            PlazaApi.categories().onSuccess { categories = it }
-            PlazaApi.hot(8).onSuccess { hotList = it }
-            PlazaApi.recommend(14).onSuccess { list ->
-                bannerList = list.take(6)
-                recList = list.drop(6)
+            try {
+                coroutineScope {
+                    val c = async { PlazaApi.categories() }
+                    val h = async { PlazaApi.hot(8) }
+                    val r = async { PlazaApi.recommend(14) }
+                    c.await().onSuccess { categories = it }
+                    h.await().onSuccess { hotList = it }
+                    r.await().onSuccess { list ->
+                        bannerList = list.take(6)
+                        recList = list.drop(6)
+                    }
+                }
+            } finally {
+                loading = false
             }
-            loading = false
         }
     }
 
@@ -302,19 +314,41 @@ fun DiscoverScreen(
         loadingMore = true
         val page = if (reset) 1 else gridPage + 1
         scope.launch {
-            PlazaApi.plaza(page = page, limit = 20, category = selectedCategory, sort = sort)
-                .onSuccess { (total, list) ->
-                    gridTotal = total
-                    gridPage = page
-                    gridList = if (reset) list else (gridList + list).distinctBy { it.id }
-                }
-                .onFailure { if (reset) appVm.showToast(it.message ?: "加载失败") }
-            loadingMore = false
+            try {
+                PlazaApi.plaza(page = page, limit = 20, category = selectedCategory, sort = sort)
+                    .onSuccess { (total, list) ->
+                        gridTotal = total
+                        gridPage = page
+                        gridList = if (reset) list else (gridList + list).distinctBy { it.id }
+                        gridFailed = false
+                    }
+                    .onFailure {
+                        if (reset) {
+                            gridFailed = true
+                            gridList = emptyList()
+                            gridTotal = 0
+                            appVm.showToast(it.message ?: "加载失败")
+                        }
+                    }
+            } finally {
+                loadingMore = false
+            }
         }
     }
 
-    LaunchedEffect(Unit) { loadBase(); loadGrid(true) }
-    LaunchedEffect(selectedCategory, sort) { loadGrid(true) }
+    LaunchedEffect(Unit) {
+        loadBase()
+        loadGrid(true)
+        var prevCat = selectedCategory
+        var prevSort = sort
+        snapshotFlow { selectedCategory to sort }.collect { (c, s) ->
+            if (c != prevCat || s != prevSort) {
+                prevCat = c
+                prevSort = s
+                loadGrid(true)
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -376,6 +410,7 @@ fun DiscoverScreen(
             modifier = Modifier.fillMaxSize(),
             refreshEnabled = true,
             onRefresh = {
+                gridFailed = false
                 loadBase()
                 loadGrid(true)
             },
@@ -590,7 +625,36 @@ fun DiscoverScreen(
                     Box(
                         Modifier.fillMaxWidth().padding(40.dp),
                         contentAlignment = Alignment.Center,
-                    ) { Text("这里还没有人设，快来发布第一个吧", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    ) {
+                        if (gridFailed) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    "加载失败，请检查网络后重试",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Spacer(Modifier.height(14.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable {
+                                        gridFailed = false
+                                        loadBase()
+                                        loadGrid(true)
+                                    },
+                                ) {
+                                    Text(
+                                        "点击重试",
+                                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 9.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                }
+                            }
+                        } else {
+                            Text("这里还没有人设，快来发布第一个吧", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
             item { Spacer(Modifier.height(80.dp)) }
@@ -640,9 +704,17 @@ fun HotListScreen(
 ) {
     var list by remember { mutableStateOf<List<PersonaLight>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        PlazaApi.hot(50).onSuccess { list = it }.onFailure { appVm.showToast(it.message ?: "加载失败") }
-        loading = false
+    var failed by remember { mutableStateOf(false) }
+    var reloadKey by remember { mutableIntStateOf(0) }
+    LaunchedEffect(reloadKey) {
+        loading = true
+        try {
+            PlazaApi.hot(50)
+                .onSuccess { list = it; failed = false }
+                .onFailure { failed = true; appVm.showToast(it.message ?: "加载失败") }
+        } finally {
+            loading = false
+        }
     }
     Column(modifier = Modifier.fillMaxSize()) {
         androidx.compose.material3.TopAppBar(
@@ -656,6 +728,33 @@ fun HotListScreen(
         )
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else if (list.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (failed) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "加载失败，请检查网络后重试",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { failed = false; reloadKey++ },
+                        ) {
+                            Text(
+                                "点击重试",
+                                modifier = Modifier.padding(horizontal = 22.dp, vertical = 9.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
+                    }
+                } else {
+                    Text("暂无数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         } else {
             RubberBandBox(modifier = Modifier.fillMaxSize()) {
             LazyColumn {
