@@ -24,11 +24,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -36,15 +35,6 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,9 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -74,6 +62,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.RadioButton
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Base64
 
 /**
@@ -89,7 +86,7 @@ fun CallScreen(
 ) {
     val context = LocalContext.current
     val st by CallEngine.state.collectAsState()
-    val scheme = MaterialTheme.colorScheme
+    val colors = MiuixTheme.colorScheme
 
     var voiceReady by remember { mutableStateOf(CallEngine.isVoiceConfigured(context, personaName)) }
     var started by remember { mutableStateOf(false) }
@@ -106,7 +103,6 @@ fun CallScreen(
         if (granted) beginCall() else onEnd()
     }
 
-    // 已选好音色（或首次已配置）→ 请求录音权限并开始；未配置时先弹音色选择
     LaunchedEffect(voiceReady) {
         if (voiceReady && !started && !permissionRequested) {
             permissionRequested = true
@@ -142,7 +138,7 @@ fun CallScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(scheme.surface),
+            .background(colors.surface),
     ) {
         Column(
             modifier = Modifier
@@ -155,9 +151,9 @@ fun CallScreen(
             Spacer(Modifier.height(28.dp))
             Text(
                 personaName,
-                style = MaterialTheme.typography.titleLarge,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = scheme.onSurface,
+                color = colors.onSurface,
             )
             Spacer(Modifier.weight(0.9f))
 
@@ -167,14 +163,14 @@ fun CallScreen(
                     Box(
                         Modifier
                             .size((150 + st.level * 36).dp)
-                            .background(scheme.primary.copy(alpha = 0.12f), CircleShape)
+                            .background(colors.primary.copy(alpha = 0.12f), CircleShape)
                     )
                 }
                 Box(
                     Modifier
                         .size(140.dp)
                         .scale(if (st.phase == CallEngine.Phase.DIALING || st.phase == CallEngine.Phase.GREETING) pulse else 1f)
-                        .border(2.dp, scheme.outlineVariant.copy(alpha = 0.5f), CircleShape),
+                        .border(2.dp, colors.dividerLine.copy(alpha = 0.6f), CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     PersonaAvatar(contactId = personaId, name = personaName, size = 132.dp)
@@ -190,15 +186,15 @@ fun CallScreen(
                     st.phase == CallEngine.Phase.SPEAKING -> "对方正在说话"
                     else -> fmtSecs(secs)
                 },
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
+                fontSize = 14.sp,
+                color = colors.onSurfaceVariantSummary,
             )
             if (st.subtitle.isNotBlank() && (st.phase == CallEngine.Phase.SPEAKING || st.phase == CallEngine.Phase.THINKING || st.phase == CallEngine.Phase.LISTENING)) {
                 Spacer(Modifier.height(10.dp))
                 Text(
                     st.subtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    fontSize = 12.sp,
+                    color = colors.onSurfaceVariantSummary.copy(alpha = 0.8f),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(horizontal = 12.dp),
                     maxLines = 2,
@@ -210,10 +206,10 @@ fun CallScreen(
             if (!started) {
                 Button(
                     onClick = { showPicker = true },
-                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColorsPrimary(),
                     modifier = Modifier.fillMaxWidth().height(46.dp),
                 ) {
-                    Text(if (voiceReady) "开始通话" else "选择音色开始通话")
+                    Text(if (voiceReady) "开始通话" else "选择音色开始通话", color = colors.onPrimary)
                 }
                 Spacer(Modifier.height(14.dp))
             }
@@ -263,31 +259,31 @@ private fun fmtSecs(s: Int): String = "%02d:%02d".format(s / 60, s % 60)
 
 @Composable
 private fun CallCtl(icon: ImageVector, label: String, onClick: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
+    val colors = MiuixTheme.colorScheme
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(
             shape = CircleShape,
-            color = scheme.surfaceContainerHigh,
+            color = colors.surfaceContainerHigh,
             modifier = Modifier
                 .size(58.dp)
                 .clickable(onClick = onClick),
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = label, tint = scheme.onSurface, modifier = Modifier.size(24.dp))
+                Icon(icon, contentDescription = label, tint = colors.onSurface, modifier = Modifier.size(24.dp))
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+        Text(label, fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
     }
 }
 
 @Composable
 private fun CallHangup(onClick: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
+    val colors = MiuixTheme.colorScheme
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(
             shape = CircleShape,
-            color = scheme.errorContainer,
+            color = colors.error.copy(alpha = 0.9f),
             modifier = Modifier
                 .size(66.dp)
                 .clickable(onClick = onClick),
@@ -296,13 +292,13 @@ private fun CallHangup(onClick: () -> Unit) {
                 Icon(
                     Icons.Rounded.CallEnd,
                     contentDescription = "挂断",
-                    tint = scheme.error,
+                    tint = colors.onPrimary,
                     modifier = Modifier.size(28.dp),
                 )
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text("挂断", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+        Text("挂断", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
     }
 }
 
@@ -316,7 +312,7 @@ private fun VoicePickerSheet(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val scheme = MaterialTheme.colorScheme
+    val colors = MiuixTheme.colorScheme
     var voices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     var selected by remember { mutableStateOf(CallEngine.currentVoice(context, personaName) ?: "") }
     var loading by remember { mutableStateOf(true) }
@@ -392,72 +388,39 @@ private fun VoicePickerSheet(
 
     LingXinSheet(onDismiss = onDismiss) {
         // 限高（屏幕 62%）+ 内部滚动：音色多也不会撑爆屏幕，且始终能滚到按钮
-        val sheetMaxHeight = with(LocalDensity.current) {
-            (LocalConfiguration.current.screenHeightDp * 0.62f).dp
-        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = sheetMaxHeight)
+                .heightIn(max = 420.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 4.dp),
         ) {
-            Text("为「$personaName」选择通话音色", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("为「$personaName」选择通话音色", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
             Spacer(Modifier.height(4.dp))
             Text(
                 "通话使用独立的高音质实时语音模型；不选音色无法开始通话",
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                color = colors.onSurfaceVariantSummary,
             )
             Spacer(Modifier.height(12.dp))
 
             if (loading) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.Center) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 }
             }
-
-            // 音色克隆入口（置顶）
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = scheme.surfaceContainerHigh,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = !cloning) { filePicker.launch("audio/*") },
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("克隆我的声音", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = scheme.primary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "上传一段 MP3 / WAV 音频（10秒以上更清晰，≤8MB），复刻专属音色；只需复刻一次，之后一直复用",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (cloning) {
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text("正在上传并复刻，请稍候…", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-                }
-            }
-
-            Spacer(Modifier.height(6.dp))
             voices.forEach { (id, name) ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { selected = id }
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = scheme.onSurface,
+                        fontSize = 15.sp,
+                        color = colors.onSurface,
                         modifier = Modifier.weight(1f),
                     )
                     RadioButton(
@@ -467,12 +430,40 @@ private fun VoicePickerSheet(
                 }
             }
 
+            Spacer(Modifier.height(6.dp))
+            // 音色克隆入口（置顶）
+            Surface(
+                color = colors.surfaceContainerHigh,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = !cloning) { filePicker.launch("audio/*") },
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text("克隆我的声音", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = colors.primary)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "上传一段 MP3 / WAV 音频（10秒以上更清晰，≤8MB），复刻专属音色；只需复刻一次，之后一直复用",
+                        fontSize = 12.sp,
+                        color = colors.onSurfaceVariantSummary,
+                    )
+                }
+            }
+
+            if (cloning) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.height(0.dp))
+                    Text("  正在上传并复刻，请稍候…", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                }
+            }
+
             if (tip.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     tip,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (tip.contains("成功")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                    fontSize = 12.sp,
+                    color = if (tip.contains("成功")) colors.primary else colors.error,
                 )
             }
 
@@ -480,10 +471,10 @@ private fun VoicePickerSheet(
             Button(
                 onClick = { if (selected.isNotBlank()) onSelected(selected) },
                 enabled = selected.isNotBlank() && !cloning,
-                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColorsPrimary(),
                 modifier = Modifier.fillMaxWidth().height(46.dp),
             ) {
-                Text(if (selected.isNotBlank()) "使用该音色开始通话" else "请先选择音色")
+                Text(if (selected.isNotBlank()) "使用该音色开始通话" else "请先选择音色", color = colors.onPrimary)
             }
             Spacer(Modifier.height(10.dp))
         }
