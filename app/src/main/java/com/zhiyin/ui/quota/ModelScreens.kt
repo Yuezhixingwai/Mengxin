@@ -1,4 +1,4 @@
-package com.zhiyin.ui.quota
+﻿package com.zhiyin.ui.quota
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,27 +20,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,13 +31,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.data.AppSession
 import com.zhiyin.data.VoicePlayer
 import com.zhiyin.logic.net.ApiGateway
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.CardContainer
 import com.zhiyin.ui.EmptyHint
 import com.zhiyin.ui.RubberBandBox
@@ -70,52 +53,67 @@ import org.json.JSONObject
 import java.io.File
 import java.net.URL
 import kotlin.concurrent.thread
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuotaScreen(appVm: AppViewModel, onBack: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("zhiyin", 0) }
     var useOfficial by remember { mutableStateOf(prefs.getBoolean("use_official_quota", true)) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("模型与额度", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
-
-        SingleChoiceSegmentedButtonRow(
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "模型与额度",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
+            )
+        },
+    ) { padding ->
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .fillMaxSize()
+                .padding(padding),
         ) {
-            SegmentedButton(
-                selected = !useOfficial,
-                onClick = {
-                    useOfficial = false
-                    prefs.edit().putBoolean("use_official_quota", false).apply()
-                    appVm.showToast("已切换到自接API")
+            TabRow(
+                tabs = listOf("自接API", "官方配额"),
+                selectedTabIndex = if (useOfficial) 1 else 0,
+                onTabSelected = { idx ->
+                    if (idx == 1) {
+                        useOfficial = true
+                        prefs.edit().putBoolean("use_official_quota", true).apply()
+                        appVm.showToast("已切换到官方配额（灵心币）")
+                    } else {
+                        useOfficial = false
+                        prefs.edit().putBoolean("use_official_quota", false).apply()
+                        appVm.showToast("已切换到自接API")
+                    }
                 },
-                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-            ) { Text("自接API") }
-            SegmentedButton(
-                selected = useOfficial,
-                onClick = {
-                    useOfficial = true
-                    prefs.edit().putBoolean("use_official_quota", true).apply()
-                    appVm.showToast("已切换到官方配额（灵心币）")
-                },
-                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-            ) { Text("官方配额") }
-        }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
 
-        if (useOfficial) {
-            OfficialQuotaPanel(appVm = appVm)
-        } else {
-            SelfApiPanel(appVm = appVm)
+            if (useOfficial) {
+                OfficialQuotaPanel(appVm = appVm)
+            } else {
+                SelfApiPanel(appVm = appVm)
+            }
         }
     }
 }
@@ -124,6 +122,7 @@ data class CoinRecord(val type: String, val task: String, val coins: Double, val
 
 @Composable
 fun OfficialQuotaPanel(appVm: AppViewModel) {
+    val colors = MiuixTheme.colorScheme
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("zhiyin", 0) }
     var records by remember { mutableStateOf(listOf<CoinRecord>()) }
@@ -187,17 +186,24 @@ fun OfficialQuotaPanel(appVm: AppViewModel) {
             .verticalScroll(rememberScrollState()),
     ) {
         CardContainer {
-            ListItem(
-                modifier = Modifier.clickable { showVoicePicker = true },
-                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                headlineContent = { Text("语音回复音色") },
-                supportingContent = { Text(currentVoiceName(prefs, voices)) },
-                trailingContent = { Text("更换", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) },
+            BasicComponent(
+                title = "语音回复音色",
+                summary = currentVoiceName(prefs, voices),
+                endActions = {
+                    Text("更换", fontSize = 14.sp, color = colors.primary)
+                },
+                onClick = { showVoicePicker = true },
+                modifier = Modifier.fillMaxWidth(),
             )
-            ListItem(
-                modifier = Modifier.clickable {
+            BasicComponent(
+                title = "试听当前音色",
+                endActions = {
+                    if (previewing) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    else Text("播放", fontSize = 14.sp, color = colors.primary)
+                },
+                onClick = {
                     val voice = prefs.getString("tts_voice_global", "mimo_default") ?: "mimo_default"
-                    if (previewing) return@clickable
+                    if (previewing) return@BasicComponent
                     previewing = true
                     appVm.showToast("正在生成试听音频…")
                     thread {
@@ -233,12 +239,7 @@ fun OfficialQuotaPanel(appVm: AppViewModel) {
                         }
                     }
                 },
-                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                headlineContent = { Text("试听当前音色") },
-                trailingContent = {
-                    if (previewing) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    else Text("播放", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-                },
+                modifier = Modifier.fillMaxWidth(),
             )
         }
 
@@ -246,39 +247,41 @@ fun OfficialQuotaPanel(appVm: AppViewModel) {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {
                 Text(
                     "调用记录",
-                    style = MaterialTheme.typography.titleSmall,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.onSurface,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
                 if (records.isEmpty()) {
                     Text(
                         "暂无调用记录",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        color = colors.onSurfaceVariantSummary,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                     )
                 }
                 records.forEachIndexed { i, r ->
                     val name = modelTypeName(r.type)
-                    ListItem(
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                        leadingContent = {
+                    BasicComponent(
+                        title = "$name · ${r.task}",
+                        summary = r.time,
+                        startAction = {
                             Text(
                                 "%02d".format(i + 1),
-                                style = MaterialTheme.typography.labelMedium,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = colors.onSurfaceVariantSummary,
                                 modifier = Modifier.width(30.dp),
                             )
                         },
-                        headlineContent = { Text("$name · ${r.task}", style = MaterialTheme.typography.bodyMedium) },
-                        supportingContent = { Text(r.time, style = MaterialTheme.typography.labelSmall) },
-                        trailingContent = {
+                        endActions = {
                             Text(
                                 (if (r.coins > 0) "+" else "-") + fmtCoin(kotlin.math.abs(r.coins)),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (r.coins > 0) Color(0xFF34B78F) else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 14.sp,
+                                color = if (r.coins > 0) colors.primary else colors.onSurface,
                             )
                         },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
@@ -292,27 +295,23 @@ fun OfficialQuotaPanel(appVm: AppViewModel) {
             Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
                     "选择语音回复音色",
-                    style = MaterialTheme.typography.titleMedium,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
+                    color = colors.onSurface,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                 )
                 LazyColumn(modifier = Modifier.height(320.dp)) {
                     items(voices.size) { i ->
                         val (id, name) = voices[i]
                         val current = (prefs.getString("tts_voice_global", "mimo_default") ?: "mimo_default") == id
-                        ListItem(
-                            modifier = Modifier.clickable {
+                        SheetItemRow(
+                            title = name,
+                            selected = current,
+                            trailing = if (current) "当前" else null,
+                            onClick = {
                                 prefs.edit().putString("tts_voice_global", id).apply()
                                 appVm.showToast("已选择: $name")
                                 showVoicePicker = false
-                            },
-                            colors = ListItemDefaults.colors(
-                                containerColor = if (current) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                                else MaterialTheme.colorScheme.surfaceContainer,
-                            ),
-                            headlineContent = { Text(name) },
-                            trailingContent = {
-                                if (current) Text("当前", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                             },
                         )
                     }
@@ -361,9 +360,9 @@ data class ApiKeyEntry(
     val raw: String,
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SelfApiPanel(appVm: AppViewModel) {
+    val colors = MiuixTheme.colorScheme
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("zhiyin", 0) }
     var keys by remember { mutableStateOf(listOf<ApiKeyEntry>()) }
@@ -435,13 +434,18 @@ fun SelfApiPanel(appVm: AppViewModel) {
         item {
             CardContainer {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("当前激活", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "当前激活",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
+                    )
                     Spacer(Modifier.height(8.dp))
                     listOf("text", "asr", "tts", "image").forEach { type ->
                         Text(
                             selections[type] ?: "${type}：未选择",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            color = colors.onSurfaceVariantSummary,
                             modifier = Modifier.padding(vertical = 2.dp),
                         )
                     }
@@ -451,29 +455,29 @@ fun SelfApiPanel(appVm: AppViewModel) {
         item {
             CardContainer {
                 Column {
-                    ListItem(
-                        modifier = Modifier.clickable { typeSelectorFor = "text" },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                        headlineContent = { Text("选择文字模型") },
-                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    BasicComponent(
+                        title = "选择文字模型",
+                        endActions = { Text("›", color = colors.onSurfaceContainerVariant) },
+                        onClick = { typeSelectorFor = "text" },
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    ListItem(
-                        modifier = Modifier.clickable { typeSelectorFor = "tts" },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                        headlineContent = { Text("选择TTS模型") },
-                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    BasicComponent(
+                        title = "选择TTS模型",
+                        endActions = { Text("›", color = colors.onSurfaceContainerVariant) },
+                        onClick = { typeSelectorFor = "tts" },
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    ListItem(
-                        modifier = Modifier.clickable { typeSelectorFor = "asr" },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                        headlineContent = { Text("选择ASR模型") },
-                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    BasicComponent(
+                        title = "选择ASR模型",
+                        endActions = { Text("›", color = colors.onSurfaceContainerVariant) },
+                        onClick = { typeSelectorFor = "asr" },
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    ListItem(
-                        modifier = Modifier.clickable { typeSelectorFor = "image" },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                        headlineContent = { Text("选择图片模型") },
-                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    BasicComponent(
+                        title = "选择图片模型",
+                        endActions = { Text("›", color = colors.onSurfaceContainerVariant) },
+                        onClick = { typeSelectorFor = "image" },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
@@ -481,11 +485,12 @@ fun SelfApiPanel(appVm: AppViewModel) {
         item {
             Button(
                 onClick = { showAdd = true },
-                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColorsPrimary(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .height(48.dp),
+                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
             ) {
                 Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
@@ -498,39 +503,39 @@ fun SelfApiPanel(appVm: AppViewModel) {
         items(keys.size) { i ->
             val k = keys[i]
             CardContainer {
-                ListItem(
-                    modifier = Modifier.clickable {
-                        prefs.edit().putString("active_${k.type}_model", k.raw).apply()
-                        refreshSelections()
-                        appVm.showToast("已激活: ${k.label}")
-                    },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                    leadingContent = {
+                BasicComponent(
+                    title = k.label,
+                    summary = "${modelTypeName(k.type)} · ${k.model}",
+                    startAction = {
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
-                                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                                .background(colors.primaryContainer, CircleShape),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 modelTypeName(k.type).take(1),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.titleSmall,
+                                color = colors.onPrimaryContainer,
+                                fontSize = 14.sp,
                             )
                         }
                     },
-                    headlineContent = { Text(k.label, style = MaterialTheme.typography.bodyLarge) },
-                    supportingContent = { Text("${modelTypeName(k.type)} · ${k.model}", style = MaterialTheme.typography.labelSmall) },
-                    trailingContent = {
+                    endActions = {
                         IconButton(onClick = { deleteKey = k }, modifier = Modifier.size(32.dp)) {
                             Icon(
                                 Icons.Rounded.DeleteOutline,
                                 contentDescription = "删除",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = colors.onSurfaceVariantSummary,
                                 modifier = Modifier.size(18.dp),
                             )
                         }
                     },
+                    onClick = {
+                        prefs.edit().putString("active_${k.type}_model", k.raw).apply()
+                        refreshSelections()
+                        appVm.showToast("已激活: ${k.label}")
+                    },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -554,29 +559,30 @@ fun SelfApiPanel(appVm: AppViewModel) {
             Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
                     "选择${modelTypeName(type)}模型",
-                    style = MaterialTheme.typography.titleMedium,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
+                    color = colors.onSurface,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                 )
                 if (filtered.isEmpty()) {
                     Text(
                         "暂无已添加的${modelTypeName(type)}Key，请先添加",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        color = colors.onSurfaceVariantSummary,
                         modifier = Modifier.padding(16.dp),
                     )
                 }
                 filtered.forEach { k ->
-                    ListItem(
-                        modifier = Modifier.clickable {
+                    SheetItemRow(
+                        title = k.label,
+                        summary = k.model,
+                        selected = false,
+                        onClick = {
                             prefs.edit().putString("active_${type}_model", k.raw).apply()
                             refreshSelections()
                             appVm.showToast("已选择: ${k.label}")
                             typeSelectorFor = null
                         },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                        headlineContent = { Text(k.label) },
-                        supportingContent = { Text(k.model, style = MaterialTheme.typography.labelSmall) },
                     )
                 }
                 Spacer(Modifier.height(16.dp))
@@ -608,13 +614,13 @@ fun SelfApiPanel(appVm: AppViewModel) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddKeySheet(
     appVm: AppViewModel,
     onDismiss: () -> Unit,
     onAdded: () -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     val types = listOf("text" to "文本模型", "asr" to "ASR语音识别", "tts" to "TTS语音合成", "image" to "图片生成")
     var currentType by remember { mutableStateOf("text") }
     var showTypePicker by remember { mutableStateOf(false) }
@@ -685,8 +691,9 @@ private fun AddKeySheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "添加 API Key",
-                    style = MaterialTheme.typography.titleMedium,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
+                    color = colors.onSurface,
                     modifier = Modifier.weight(1f),
                 )
                 TextButton2(
@@ -699,7 +706,7 @@ private fun AddKeySheet(
             SheetField(apiKey, { apiKey = it }, "API Key")
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = colors.surfaceContainerHigh,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 6.dp)
@@ -710,9 +717,9 @@ private fun AddKeySheet(
                 Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         model.ifEmpty { "点击选择模型" },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (model.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onSurface,
+                        fontSize = 16.sp,
+                        color = if (model.isEmpty()) colors.onSurfaceVariantSummary
+                        else colors.onSurface,
                         modifier = Modifier.weight(1f),
                     )
                     if (loadingModels) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -742,11 +749,12 @@ private fun AddKeySheet(
                         }
                     })
                 },
-                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColorsPrimary(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 10.dp)
                     .height(48.dp),
+                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
             ) {
                 Text("保存")
             }
@@ -758,16 +766,13 @@ private fun AddKeySheet(
         LingXinSheet(onDismiss = { showTypePicker = false }) {
             Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                 types.forEach { (id, name) ->
-                    ListItem(
-                        modifier = Modifier.clickable {
+                    SheetItemRow(
+                        title = name,
+                        selected = id == currentType,
+                        onClick = {
                             currentType = id
                             showTypePicker = false
                         },
-                        colors = ListItemDefaults.colors(
-                            containerColor = if (id == currentType) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                            else MaterialTheme.colorScheme.surfaceContainer,
-                        ),
-                        headlineContent = { Text(name) },
                     )
                 }
                 Spacer(Modifier.height(16.dp))
@@ -784,26 +789,29 @@ private fun AddKeySheet(
                 ) {
                     Text(
                         "选择模型（${modelOptions?.size ?: 0}）",
-                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(onClick = { pickingModel = false }, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Rounded.Close, contentDescription = "关闭", modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Rounded.Close,
+                            contentDescription = "关闭",
+                            tint = colors.onSurfaceVariantSummary,
+                            modifier = Modifier.size(18.dp),
+                        )
                     }
                 }
                 LazyColumn(modifier = Modifier.height(360.dp)) {
                     items(modelOptions ?: emptyList()) { m ->
-                        ListItem(
-                            modifier = Modifier.clickable {
+                        SheetItemRow(
+                            title = m,
+                            selected = m == model,
+                            onClick = {
                                 model = m
                                 pickingModel = false
                             },
-                            colors = ListItemDefaults.colors(
-                                containerColor = if (m == model) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                                else MaterialTheme.colorScheme.surfaceContainer,
-                            ),
-                            headlineContent = { Text(m, style = MaterialTheme.typography.bodyMedium) },
                         )
                     }
                 }
@@ -832,26 +840,59 @@ private fun <E, V> Either<E, V>.fold(onSuccess: (V) -> Unit, onFailure: (E) -> U
 
 @Composable
 private fun TextButton2(text: String, onClick: () -> Unit) {
-    androidx.compose.material3.TextButton(onClick = onClick) {
-        Text(text, color = MaterialTheme.colorScheme.primary)
-    }
+    TextButton(
+        text = text,
+        onClick = onClick,
+        colors = ButtonDefaults.textButtonColorsPrimary(),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+    )
 }
 
 @Composable
 private fun SheetField(value: String, onValueChange: (String) -> Unit, hint: String) {
-    OutlinedTextField(
+    TextField(
         value = value,
         onValueChange = onValueChange,
-        placeholder = { Text(hint) },
+        label = hint,
+        useLabelAsPlaceholder = true,
         singleLine = true,
-        shape = RoundedCornerShape(14.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            unfocusedBorderColor = Color.Transparent,
-        ),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
     )
+}
+
+/** 底部抽屉里的可选中列表行（miuix 配色，替代旧 M3 ListItem）。 */
+@Composable
+private fun SheetItemRow(
+    title: String,
+    selected: Boolean,
+    summary: String? = null,
+    trailing: String? = null,
+    onClick: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .background(
+                if (selected) colors.primaryContainer.copy(alpha = 0.4f) else colors.surfaceContainer,
+                RoundedCornerShape(12.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = colors.onSurface)
+            if (summary != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(summary, fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+            }
+        }
+        if (trailing != null) {
+            Text(trailing, fontSize = 12.sp, color = colors.primary)
+        }
+    }
 }

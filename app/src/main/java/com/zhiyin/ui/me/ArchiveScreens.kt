@@ -25,19 +25,8 @@ import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,9 +42,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.data.LocalArchive
 import com.zhiyin.logic.chat.ChatEngine
 import com.zhiyin.logic.data.FriendManager
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.EmptyHint
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.chat.parseBubble
@@ -66,15 +57,24 @@ import com.zhiyin.ui.vm.AppViewModel
 import com.zhiyin.ui.vm.TimeFmt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FavoritesScreen(
     appVm: AppViewModel,
     onBack: () -> Unit,
     onOpenChat: (String) -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     val context = LocalContext.current
     var items by remember { mutableStateOf(LocalArchive.listFavorites(context)) }
     var deleteFor by remember { mutableStateOf<Long?>(null) }
@@ -84,73 +84,52 @@ fun FavoritesScreen(
         items = LocalArchive.listFavorites(context)
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("我的收藏", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-            actions = {
-                if (items.isNotEmpty()) {
-                    TextButtonCompat("清空") {
-                        LocalArchive.clearFavorites(context)
-                        appVm.showToast("已清空收藏")
-                        reload()
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "我的收藏",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
+                actions = {
+                    if (items.isNotEmpty()) {
+                        TextButtonCompat("清空") {
+                            LocalArchive.clearFavorites(context)
+                            appVm.showToast("已清空收藏")
+                            reload()
+                        }
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            if (items.isEmpty()) {
+                EmptyHint("在聊天中长按消息即可收藏")
+            } else {
+                RubberBandBox(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(contentPadding = PaddingValues(vertical = 4.dp)) {
+                    lazyItems(items, key = { it.id }) { fav ->
+                        val friendName = if (fav.sessionId.startsWith("persona_"))
+                            fav.sessionId.removePrefix("persona_") else fav.sessionId.removePrefix("group_")
+                        val friendId = remember(friendName) { FriendManager.findIdByName(friendName) }
+                        val preview = remember(fav.content) { ChatEngine.previewText(fav.content) }
+                        FavoriteRow(
+                            friendName = friendName,
+                            preview = preview,
+                            timeText = TimeFmt.fullTime(fav.time),
+                            isGroup = fav.sessionId.startsWith("group_"),
+                            friendId = friendId,
+                            onClick = { detailFor = fav.id },
+                            onLongClick = { deleteFor = fav.id },
+                        )
                     }
                 }
-            },
-        )
-        if (items.isEmpty()) {
-            EmptyHint("在聊天中长按消息即可收藏")
-        } else {
-            RubberBandBox(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(contentPadding = PaddingValues(vertical = 4.dp)) {
-                lazyItems(items, key = { it.id }) { fav ->
-                    val friendName = if (fav.sessionId.startsWith("persona_"))
-                        fav.sessionId.removePrefix("persona_") else fav.sessionId.removePrefix("group_")
-                    val friendId = remember(friendName) { FriendManager.findIdByName(friendName) }
-                    val preview = remember(fav.content) { ChatEngine.previewText(fav.content) }
-                    ListItem(
-                        modifier = Modifier
-                            .combinedClickable(
-                                onClick = { detailFor = fav.id },
-                                onLongClick = { deleteFor = fav.id },
-                            ),
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                        leadingContent = {
-                            if (fav.sessionId.startsWith("group_")) {
-                                com.zhiyin.ui.components.GroupAvatar(44.dp)
-                            } else {
-                                PersonaAvatar(friendId, friendName, 44.dp)
-                            }
-                        },
-                        headlineContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    friendName,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    TimeFmt.fullTime(fav.time),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        },
-                        supportingContent = {
-                            Text(
-                                preview.ifEmpty { "[空消息]" },
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                    )
                 }
-            }
             }
         }
     }
@@ -173,18 +152,20 @@ fun FavoritesScreen(
                 Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                     Text(
                         "收藏的消息",
-                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
                         modifier = Modifier.padding(vertical = 8.dp),
                     )
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        color = colors.surfaceContainerHigh,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
                             display,
-                            style = MaterialTheme.typography.bodyLarge,
+                            fontSize = 16.sp,
+                            color = colors.onSurface,
                             modifier = Modifier
                                 .padding(16.dp)
                                 .height(240.dp)
@@ -193,7 +174,8 @@ fun FavoritesScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 16.dp)) {
-                        androidx.compose.material3.FilledTonalButton(
+                        TextButton(
+                            text = "复制全文",
                             onClick = {
                                 val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                                     as android.content.ClipboardManager
@@ -202,17 +184,19 @@ fun FavoritesScreen(
                                 )
                                 appVm.showToast("已复制")
                             },
-                            shape = RoundedCornerShape(50),
                             modifier = Modifier.weight(1f),
-                        ) { Text("复制全文") }
-                        androidx.compose.material3.Button(
+                            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        )
+                        TextButton(
+                            text = "查看会话",
                             onClick = {
                                 detailFor = null
                                 onOpenChat(fav.sessionId)
                             },
-                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
                             modifier = Modifier.weight(1f),
-                        ) { Text("查看会话") }
+                            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        )
                     }
                 }
             }
@@ -235,67 +219,145 @@ fun FavoritesScreen(
     }
 }
 
+/** 收藏列表行：头像 + 名称/时间 + 摘要（miuix 配色，支持点击与长按）。 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TextButtonCompat(text: String, onClick: () -> Unit) {
-    androidx.compose.material3.TextButton(onClick = onClick) {
-        Text(text, color = MaterialTheme.colorScheme.error)
+private fun FavoriteRow(
+    friendName: String,
+    preview: String,
+    timeText: String,
+    isGroup: Boolean,
+    friendId: Int,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (isGroup) {
+            com.zhiyin.ui.components.GroupAvatar(44.dp)
+        } else {
+            PersonaAvatar(friendId, friendName, 44.dp)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    friendName,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    timeText,
+                    fontSize = 12.sp,
+                    color = colors.onSurfaceVariantSummary,
+                )
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                preview.ifEmpty { "[空消息]" },
+                fontSize = 14.sp,
+                color = colors.onSurfaceContainerVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun TextButtonCompat(text: String, onClick: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    TextButton(
+        text = text,
+        onClick = onClick,
+        colors = ButtonDefaults.textButtonColors(
+            color = colors.error,
+            textColor = colors.onError,
+        ),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SavedImagesScreen(appVm: AppViewModel, onBack: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
     val context = LocalContext.current
     var items by remember { mutableStateOf(LocalArchive.listDownloads(context).filter { it.kind == "image" }) }
     var previewLocation by remember { mutableStateOf<String?>(null) }
     var deleteFor by remember { mutableStateOf<Long?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("我的相册", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
-        if (items.isEmpty()) {
-            EmptyHint("在聊天中长按图片选择「保存图片」即可收藏到这里")
-        } else {
-            RubberBandBox(modifier = Modifier.fillMaxSize()) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                contentPadding = PaddingValues(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                items(items, key = { it.id }) { item ->
-                    val bmp by produceState<ImageBitmap?>(initialValue = null, item.location) {
-                        value = withContext(Dispatchers.IO) {
-                            LocalArchive.loadSavedImage(context, item.location)?.asImageBitmap()
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "我的相册",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            if (items.isEmpty()) {
+                EmptyHint("在聊天中长按图片选择「保存图片」即可收藏到这里")
+            } else {
+                RubberBandBox(modifier = Modifier.fillMaxSize()) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    contentPadding = PaddingValues(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(items, key = { it.id }) { item ->
+                        val bmp by produceState<ImageBitmap?>(initialValue = null, item.location) {
+                            value = withContext(Dispatchers.IO) {
+                                LocalArchive.loadSavedImage(context, item.location)?.asImageBitmap()
+                            }
                         }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .combinedClickable(
-                                onClick = { previewLocation = item.location },
-                                onLongClick = { deleteFor = item.id },
-                            ),
-                    ) {
-                        bmp?.let {
-                            Image(
-                                bitmap = it,
-                                contentDescription = item.name,
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                        Box(
+                            modifier = Modifier
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(colors.surfaceContainerHigh)
+                                .combinedClickable(
+                                    onClick = { previewLocation = item.location },
+                                    onLongClick = { deleteFor = item.id },
+                                ),
+                        ) {
+                            bmp?.let {
+                                Image(
+                                    bitmap = it,
+                                    contentDescription = item.name,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         }
                     }
                 }
-            }
+                }
             }
         }
     }
@@ -341,60 +403,44 @@ fun SavedImagesScreen(appVm: AppViewModel, onBack: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SavedFilesScreen(appVm: AppViewModel, onBack: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
     val context = LocalContext.current
     var items by remember { mutableStateOf(LocalArchive.listDownloads(context).filter { it.kind == "file" }) }
     var deleteFor by remember { mutableStateOf<Long?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("我的文件", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
-        if (items.isEmpty()) {
-            EmptyHint("在聊天中长按文件选择「保存文件」即可收藏到这里")
-        } else {
-            RubberBandBox(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(contentPadding = PaddingValues(vertical = 4.dp)) {
-                lazyItems(items, key = { it.id }) { item ->
-                    ListItem(
-                        modifier = Modifier.combinedClickable(
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "我的文件",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            if (items.isEmpty()) {
+                EmptyHint("在聊天中长按文件选择「保存文件」即可收藏到这里")
+            } else {
+                RubberBandBox(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(contentPadding = PaddingValues(vertical = 4.dp)) {
+                    lazyItems(items, key = { it.id }) { item ->
+                        SavedFileRow(
+                            name = item.name,
+                            timeText = TimeFmt.fullTime(item.time),
                             onClick = { openSaved(context, item.location, item.name) },
                             onLongClick = { deleteFor = item.id },
-                        ),
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                        leadingContent = {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Description,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                        },
-                        headlineContent = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        supportingContent = { Text(TimeFmt.fullTime(item.time), style = MaterialTheme.typography.labelSmall) },
-                        trailingContent = {
-                            Icon(
-                                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                contentDescription = "打开",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                    )
+                        )
+                    }
                 }
-            }
+                }
             }
         }
     }
@@ -412,6 +458,63 @@ fun SavedFilesScreen(appVm: AppViewModel, onBack: () -> Unit) {
                 if (record != null) LocalArchive.removeDownload(context, record.id)
                 items = LocalArchive.listDownloads(context).filter { it.kind == "file" }
             },
+        )
+    }
+}
+
+/** 文件列表行：图标 + 文件名/时间 + 前往箭头（miuix 配色，支持点击与长按）。 */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SavedFileRow(
+    name: String,
+    timeText: String,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(colors.primaryContainer, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Description,
+                contentDescription = null,
+                tint = colors.onPrimaryContainer,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                name,
+                fontSize = 16.sp,
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                timeText,
+                fontSize = 12.sp,
+                color = colors.onSurfaceVariantSummary,
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = "打开",
+            tint = colors.onSurfaceVariantSummary,
         )
     }
 }

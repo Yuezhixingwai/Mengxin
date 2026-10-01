@@ -1,4 +1,4 @@
-package com.zhiyin.ui.auth
+﻿package com.zhiyin.ui.auth
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,18 +33,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,11 +45,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -68,6 +58,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zhiyin.R
 import com.zhiyin.data.AccountApi
@@ -75,12 +66,25 @@ import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.LingXinSheet
 import com.zhiyin.ui.vm.AuthViewModel
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Checkbox
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun AuthScreen(
     onLoggedIn: () -> Unit,
 ) {
     val vm: AuthViewModel = viewModel()
+    val colors = MiuixTheme.colorScheme
     var mode by rememberSaveable { mutableStateOf("login") }
 
     var username by rememberSaveable { mutableStateOf("") }
@@ -113,7 +117,7 @@ fun AuthScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface),
+            .background(colors.surface),
     ) {
         Box(
             modifier = Modifier
@@ -122,8 +126,8 @@ fun AuthScreen(
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-                            MaterialTheme.colorScheme.surface,
+                            colors.primaryContainer.copy(alpha = 0.85f),
+                            colors.surface,
                         )
                     )
                 ),
@@ -158,15 +162,15 @@ fun AuthScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "灵心",
-                        style = MaterialTheme.typography.headlineMedium,
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.onSurface,
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "懂你的AI陪伴",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        color = colors.onSurfaceVariantSummary,
                     )
                 }
             }
@@ -210,8 +214,8 @@ fun AuthScreen(
                             Spacer(Modifier.height(14.dp))
                             Text(
                                 "忘记密码？",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 14.sp,
+                                color = colors.primary,
                                 modifier = Modifier.clickable { showForgot = true },
                             )
                         } else {
@@ -255,30 +259,29 @@ fun AuthScreen(
                     modifier = Modifier.clickable { agreed = !agreed },
                 ) {
                     Checkbox(
-                        checked = agreed,
-                        onCheckedChange = { agreed = it },
-                        colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
+                        state = if (agreed) ToggleableState.On else ToggleableState.Off,
+                        onClick = { agreed = !agreed },
                     )
                     Text(
                         "我同意",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        color = colors.onSurfaceVariantSummary,
                     )
                     Text(
                         "用户协议",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        color = colors.primary,
                         modifier = Modifier.clickable { agreementType = "user-agreement" },
                     )
                     Text(
                         "与",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        color = colors.onSurfaceVariantSummary,
                     )
                     Text(
                         "隐私政策",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        color = colors.primary,
                         modifier = Modifier.clickable { agreementType = "privacy" },
                     )
                 }
@@ -288,8 +291,8 @@ fun AuthScreen(
             AuthEntrance(320) {
                 Text(
                     if (mode == "login") "没有账户？注册一个" else "已有账户？去登录",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 14.sp,
+                    color = colors.primary,
                     modifier = Modifier.clickable { mode = if (mode == "login") "register" else "login" },
                 )
             }
@@ -301,7 +304,7 @@ fun AuthScreen(
         if (toastMsg != null) {
             Surface(
                 shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.inverseSurface,
+                color = colors.onBackground,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 48.dp),
@@ -309,8 +312,8 @@ fun AuthScreen(
                 Text(
                     toastMsg.orEmpty(),
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                    style = MaterialTheme.typography.bodyMedium,
+                    fontSize = 14.sp,
+                    color = colors.background,
                     textAlign = TextAlign.Center,
                 )
             }
@@ -327,14 +330,14 @@ fun AuthScreen(
             ) {
                 Text(
                     "人机验证",
-                    style = MaterialTheme.typography.titleLarge,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(16.dp))
                 var captchaCode by remember { mutableStateOf("") }
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = colors.surfaceContainerHigh,
                 ) {
                     Box(
                         modifier = Modifier
@@ -422,8 +425,8 @@ fun AuthScreen(
             Spacer(Modifier.height(12.dp))
             Text(
                 agreementText ?: "加载中…",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                color = colors.onSurfaceVariantSummary,
                 modifier = Modifier
                     .height(320.dp)
                     .verticalScroll(rememberScrollState()),
@@ -443,13 +446,13 @@ private fun AuthField(
     keyboardType: KeyboardType = KeyboardType.Text,
 ) {
     var showPwd by remember { mutableStateOf(false) }
-    OutlinedTextField(
+    TextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier.fillMaxWidth(),
-        placeholder = { Text(hint, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        label = hint,
+        useLabelAsPlaceholder = true,
         singleLine = singleLine,
-        shape = RoundedCornerShape(16.dp),
         visualTransformation = if (isPassword && !showPwd) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(
             keyboardType = if (isPassword) KeyboardType.Password else keyboardType
@@ -460,53 +463,54 @@ private fun AuthField(
                     Icon(
                         if (showPwd) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
             }
         } else null,
-        colors = OutlinedTextFieldDefaults.colors(
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            unfocusedBorderColor = Color.Transparent,
-            focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-        ),
     )
 }
 
 @Composable
 private fun PrimaryButton(text: String, loading: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
     Button(
         onClick = onClick,
         enabled = enabled && !loading,
-        shape = RoundedCornerShape(50),
+        cornerRadius = 26.dp,
         modifier = Modifier
             .fillMaxWidth()
             .height(52.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
+        colors = ButtonDefaults.buttonColorsPrimary(),
     ) {
         if (loading) {
             CircularProgressIndicator(
                 modifier = Modifier.size(22.dp),
-                color = MaterialTheme.colorScheme.onPrimary,
                 strokeWidth = 2.5.dp,
+                colors = ProgressIndicatorDefaults.progressIndicatorColors(colors.onPrimary),
             )
         } else {
-            Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.onPrimary)
         }
     }
 }
 
 @Composable
 private fun OutlinedPill(text: String, enabled: Boolean = true, onClick: () -> Unit) {
-    androidx.compose.material3.OutlinedButton(
+    val colors = MiuixTheme.colorScheme
+    TextButton(
+        text = text,
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(50),
         modifier = Modifier.height(52.dp),
-    ) {
-        Text(text, style = MaterialTheme.typography.labelLarge)
-    }
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
+        textStyle = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
+        colors = ButtonDefaults.textButtonColors(
+            color = colors.surfaceContainer,
+            textColor = colors.onSurface,
+        ),
+    )
 }
 
 @Composable

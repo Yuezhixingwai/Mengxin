@@ -1,4 +1,4 @@
-package com.zhiyin.ui.me
+﻿package com.zhiyin.ui.me
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,28 +23,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.MonetizationOn
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
@@ -63,15 +46,30 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.R
 import com.zhiyin.data.AppSession
 import com.zhiyin.logic.net.ApiGateway
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.CardContainer
 import com.zhiyin.ui.RubberBandBox
+import com.zhiyin.ui.components.brandGradient
 import com.zhiyin.ui.vm.AppViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.RadioButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 enum class PaymentMethod(val label: String, val sub: String? = null) {
     WECHAT("微信支付", null),
@@ -134,13 +132,13 @@ private fun fmtAmount(v: Double): String =
     if (v == Math.floor(v) && !v.isInfinite()) Math.round(v).toString()
     else (Math.round(v * 100) / 100.0).toString()
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubscriptionScreen(
     appVm: AppViewModel,
     onBack: () -> Unit,
     onOpenRecharge: () -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     var billingPeriod by rememberSaveable { mutableStateOf("yearly") }
     var payment by rememberSaveable { mutableStateOf(PaymentMethod.WECHAT) }
 
@@ -149,22 +147,25 @@ fun SubscriptionScreen(
     val totalNote = if (billingPeriod == "monthly") "连续包月 · 自动续费，可随时取消"
     else "连续包年 · 自动续费，可随时取消"
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface),
-    ) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("灵心会员", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "灵心会员",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
+            )
+        },
+        bottomBar = {
+            PayBottomBar(total = total, note = totalNote, buttonText = "立即订阅") {
+                appVm.showToast("订阅支付")
+            }
+        },
+    ) { padding ->
         RubberBandBox(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxSize()
+                .padding(padding),
         ) {
             Column(
                 modifier = Modifier
@@ -183,19 +184,16 @@ fun SubscriptionScreen(
                 SubscriptionNotes(appVm)
             }
         }
-        PayBottomBar(total = total, note = totalNote, buttonText = "立即订阅") {
-            appVm.showToast("订阅支付")
-        }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RechargeScreen(
     appVm: AppViewModel,
     onBack: () -> Unit,
     onOpenSubscription: () -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     var balance by remember { mutableStateOf<Double?>(null) }
     var selectedIndex by rememberSaveable { mutableIntStateOf(3) }
     var customAmount by rememberSaveable { mutableStateOf("") }
@@ -220,22 +218,25 @@ fun RechargeScreen(
     val totalNote = if (customValue != null && customValue > 0) "自定义充值 · 1元=10灵心币"
     else "1元=10灵心币 · 充值后立即到账"
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface),
-    ) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("充值灵心币", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "充值灵心币",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
+            )
+        },
+        bottomBar = {
+            PayBottomBar(total = total, note = totalNote, buttonText = "立即支付") {
+                appVm.showToast("充值支付")
+            }
+        },
+    ) { padding ->
         RubberBandBox(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxSize()
+                .padding(padding),
         ) {
             Column(
                 modifier = Modifier
@@ -261,86 +262,79 @@ fun RechargeScreen(
                 RechargeNotes()
             }
         }
-        PayBottomBar(total = total, note = totalNote, buttonText = "立即支付") {
-            appVm.showToast("充值支付")
-        }
     }
 }
 
 @Composable
 private fun MemberHeroCard(onOpenRecharge: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+    val colors = MiuixTheme.colorScheme
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .background(brandGradient(), RoundedCornerShape(20.dp))
+            .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
-            Text(
-                "灵心会员",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
+        Text(
+            "灵心会员",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.onPrimary,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "解锁全部 AI 人设 · 无限畅聊 · 专属权益",
+            fontSize = 12.sp,
+            color = colors.onPrimary.copy(alpha = 0.78f),
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenRecharge)
+                .background(colors.onPrimary.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Rounded.MonetizationOn,
+                contentDescription = null,
+                tint = colors.onPrimary,
+                modifier = Modifier.size(18.dp),
             )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                "解锁全部 AI 人设 · 无限畅聊 · 专属权益",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onOpenRecharge),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Rounded.MonetizationOn,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "充值灵心币",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            "会员赠送额度用完后可随时补充",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Icon(
-                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "充值灵心币",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.onPrimary,
+                )
+                Text(
+                    "会员赠送额度用完后可随时补充",
+                    fontSize = 12.sp,
+                    color = colors.onPrimary.copy(alpha = 0.78f),
+                )
             }
+            Icon(
+                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = colors.onPrimary.copy(alpha = 0.78f),
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }
 
 @Composable
 private fun BenefitSection() {
+    val colors = MiuixTheme.colorScheme
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
         Text(
             "会员权益",
-            style = MaterialTheme.typography.titleSmall,
+            fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.onSurface,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
         )
         CardContainer {
@@ -357,6 +351,7 @@ private fun BenefitSection() {
 
 @Composable
 private fun BenefitRow(index: Int, title: String, desc: String) {
+    val colors = MiuixTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -365,22 +360,22 @@ private fun BenefitRow(index: Int, title: String, desc: String) {
     ) {
         Text(
             "%02d".format(index),
-            style = MaterialTheme.typography.labelMedium,
+            fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
+            color = colors.primary,
             modifier = Modifier.width(30.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 title,
-                style = MaterialTheme.typography.bodyLarge,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.onSurface,
             )
             Text(
                 desc,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                color = colors.onSurfaceVariantSummary,
             )
         }
     }
@@ -388,54 +383,23 @@ private fun BenefitRow(index: Int, title: String, desc: String) {
 
 @Composable
 private fun BillingPeriodSwitch(period: String, onPeriodChange: (String) -> Unit) {
-    SingleChoiceSegmentedButtonRow(
+    TabRow(
+        tabs = listOf("连续包月 ¥18/月", "连续包年 ¥128/年"),
+        selectedTabIndex = if (period == "monthly") 0 else 1,
+        onTabSelected = { onPeriodChange(if (it == 0) "monthly" else "yearly") },
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 10.dp),
-    ) {
-        SegmentedButton(
-            selected = period == "monthly",
-            onClick = { onPeriodChange("monthly") },
-            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 6.dp),
-            ) {
-                Text(
-                    "连续包月",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (period == "monthly") FontWeight.SemiBold else FontWeight.Normal,
-                )
-                Text("¥18/月", style = MaterialTheme.typography.labelSmall)
-            }
-        }
-        SegmentedButton(
-            selected = period == "yearly",
-            onClick = { onPeriodChange("yearly") },
-            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 6.dp),
-            ) {
-                Text(
-                    "连续包年 · 推荐",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (period == "yearly") FontWeight.SemiBold else FontWeight.Normal,
-                )
-                Text("¥128/年 · 省41%", style = MaterialTheme.typography.labelSmall)
-            }
-        }
-    }
+    )
 }
 
 @Composable
 private fun SubscriptionPlanCard(plan: PlanSpec) {
+    val colors = MiuixTheme.colorScheme
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+        color = colors.primaryContainer.copy(alpha = 0.3f),
+        border = BorderStroke(1.5.dp, colors.primary),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp),
@@ -445,41 +409,41 @@ private fun SubscriptionPlanCard(plan: PlanSpec) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         plan.name,
-                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.onSurface,
                     )
                     Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             plan.price,
-                            style = MaterialTheme.typography.headlineSmall,
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = colors.primary,
                         )
                         if (plan.originalPrice != null) {
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 plan.originalPrice,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp,
+                                color = colors.onSurfaceVariantSummary,
                                 textDecoration = TextDecoration.LineThrough,
                             )
                         }
                         Spacer(Modifier.width(8.dp))
                         Text(
                             plan.perMonth,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            color = colors.onSurfaceVariantSummary,
                         )
                     }
                 }
                 plan.tag?.let { tag ->
-                    Surface(shape = RoundedCornerShape(50), color = Color(0xFFE85D4A)) {
+                    Surface(shape = RoundedCornerShape(50), color = colors.error) {
                         Text(
                             tag,
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onError,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         )
@@ -495,11 +459,11 @@ private fun SubscriptionPlanCard(plan: PlanSpec) {
                     Icon(
                         Icons.Rounded.Check,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = colors.primary,
                         modifier = Modifier.size(15.dp),
                     )
                     Spacer(Modifier.width(6.dp))
-                    Text(f, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(f, fontSize = 14.sp, color = colors.onSurface)
                 }
             }
         }
@@ -508,67 +472,84 @@ private fun SubscriptionPlanCard(plan: PlanSpec) {
 
 @Composable
 private fun SubscriptionNotes(appVm: AppViewModel) {
+    val colors = MiuixTheme.colorScheme
     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
         Text(
             "· 会员服务为虚拟商品，订阅成功后立即生效\n" +
                 "· 连续包月 / 包年到期前将自动续费，可随时取消\n" +
                 "· 支持微信支付、支付宝及银联 / VISA / Mastercard 银行卡",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            color = colors.onSurfaceVariantSummary,
         )
         Row(modifier = Modifier.padding(top = 4.dp)) {
-            TextButton(onClick = { appVm.showToast("自动续费") }) {
-                Text("自动续费说明", style = MaterialTheme.typography.labelSmall)
-            }
-            TextButton(onClick = { appVm.showToast("会员服务") }) {
-                Text("会员服务协议", style = MaterialTheme.typography.labelSmall)
-            }
-            TextButton(onClick = { appVm.showToast("恢复购买") }) {
-                Text("恢复购买", style = MaterialTheme.typography.labelSmall)
-            }
-        }
-    }
-}
-
-@Composable
-private fun RechargeMemberBanner(onOpenSubscription: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .clickable(onClick = onOpenSubscription),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "开通会员更划算",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    "年费会员每月额外赠 500 灵心币",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
+            TextButton(
+                text = "自动续费说明",
+                onClick = { appVm.showToast("自动续费") },
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                textStyle = TextStyle(fontSize = 12.sp),
+                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                minWidth = 0.dp,
+                minHeight = 32.dp,
+            )
+            TextButton(
+                text = "会员服务协议",
+                onClick = { appVm.showToast("会员服务") },
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                textStyle = TextStyle(fontSize = 12.sp),
+                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                minWidth = 0.dp,
+                minHeight = 32.dp,
+            )
+            TextButton(
+                text = "恢复购买",
+                onClick = { appVm.showToast("恢复购买") },
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                textStyle = TextStyle(fontSize = 12.sp),
+                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                minWidth = 0.dp,
+                minHeight = 32.dp,
             )
         }
     }
 }
 
 @Composable
+private fun RechargeMemberBanner(onOpenSubscription: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .background(brandGradient(), RoundedCornerShape(18.dp))
+            .clickable(onClick = onOpenSubscription)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "开通会员更划算",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.onPrimary,
+            )
+            Text(
+                "年费会员每月额外赠 500 灵心币",
+                fontSize = 12.sp,
+                color = colors.onPrimary.copy(alpha = 0.78f),
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = colors.onPrimary.copy(alpha = 0.78f),
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
 private fun BalanceCard(balance: Double?) {
+    val colors = MiuixTheme.colorScheme
     CardContainer {
         Column(
             modifier = Modifier
@@ -577,21 +558,21 @@ private fun BalanceCard(balance: Double?) {
         ) {
             Text(
                 "灵心币余额",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                color = colors.onSurfaceVariantSummary,
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 balance?.let { "$" + fmtAmount(it) } ?: "--",
-                style = MaterialTheme.typography.titleLarge,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.onSurface,
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 "充值后实时到账",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                color = colors.onSurfaceVariantSummary,
             )
         }
     }
@@ -604,12 +585,13 @@ private fun RechargePackagesSection(
     customAmount: String,
     onCustomChange: (String) -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
         Text(
             "选择充值金额",
-            style = MaterialTheme.typography.titleSmall,
+            fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.onSurface,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
         )
         coinPackages.chunked(2).forEach { row ->
@@ -631,22 +613,21 @@ private fun RechargePackagesSection(
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
-        OutlinedTextField(
+        TextField(
             value = customAmount,
             onValueChange = onCustomChange,
-            placeholder = { Text("自定义金额（¥1 起充）", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            label = "自定义金额（¥1 起充）",
+            useLabelAsPlaceholder = true,
             singleLine = true,
-            prefix = { Text("¥", color = MaterialTheme.colorScheme.onSurface) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                cursorColor = MaterialTheme.colorScheme.primary,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                unfocusedBorderColor = Color.Transparent,
-            ),
+            leadingIcon = {
+                Text(
+                    "¥",
+                    fontSize = 15.sp,
+                    color = colors.onSurface,
+                    modifier = Modifier.padding(start = 10.dp),
+                )
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp),
@@ -661,15 +642,16 @@ private fun CoinPackageCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = MiuixTheme.colorScheme
     Box(modifier = modifier) {
         Surface(
             shape = RoundedCornerShape(18.dp),
-            color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-            else MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = if (selected) colors.primaryContainer.copy(alpha = 0.35f)
+            else colors.surfaceContainerHigh,
             border = BorderStroke(
                 if (selected) 1.5.dp else 0.5.dp,
-                if (selected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                if (selected) colors.primary
+                else colors.dividerLine.copy(alpha = 0.6f),
             ),
             modifier = Modifier
                 .fillMaxWidth()
@@ -683,22 +665,22 @@ private fun CoinPackageCard(
             ) {
                 Text(
                     pkg.priceLabel,
-                    style = MaterialTheme.typography.titleLarge,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    color = if (selected) colors.primary else colors.onSurface,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     "${pkg.coins} 灵心币",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    color = colors.onSurfaceVariantSummary,
                 )
                 if (pkg.bonus > 0) {
                     Spacer(Modifier.height(2.dp))
                     Text(
                         "赠 ${pkg.bonus} 币",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF34B78F),
+                        fontSize = 12.sp,
+                        color = colors.primary,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
@@ -707,13 +689,13 @@ private fun CoinPackageCard(
         pkg.tag?.let { tag ->
             Surface(
                 shape = RoundedCornerShape(topStart = 18.dp, bottomEnd = 10.dp),
-                color = Color(0xFFE85D4A),
+                color = colors.error,
                 modifier = Modifier.align(Alignment.TopStart),
             ) {
                 Text(
                     tag,
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onError,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                 )
@@ -728,8 +710,8 @@ private fun RechargeNotes() {
         "· 灵心币为虚拟商品，充值成功后立即到账，不支持退款\n" +
             "· 1元 = 10灵心币，多充多赠\n" +
             "· 未成年人请在监护人指导下理性消费",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 12.sp,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
     )
 }
@@ -739,12 +721,13 @@ internal fun PaymentMethodSelector(
     selected: PaymentMethod,
     onSelect: (PaymentMethod) -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             "支付方式",
-            style = MaterialTheme.typography.titleSmall,
+            fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.onSurface,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
         )
         CardContainer {
@@ -752,13 +735,13 @@ internal fun PaymentMethodSelector(
                 PaymentMethodRow(PaymentMethod.WECHAT, selected, onSelect)
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 82.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    color = colors.dividerLine.copy(alpha = 0.4f),
                     thickness = 0.5.dp,
                 )
                 PaymentMethodRow(PaymentMethod.ALIPAY, selected, onSelect)
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 82.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    color = colors.dividerLine.copy(alpha = 0.4f),
                     thickness = 0.5.dp,
                 )
                 PaymentMethodRow(PaymentMethod.BANKCARD, selected, onSelect)
@@ -773,6 +756,7 @@ private fun PaymentMethodRow(
     selected: PaymentMethod,
     onSelect: (PaymentMethod) -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -800,19 +784,18 @@ private fun PaymentMethodRow(
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(method.label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(method.label, fontSize = 16.sp, color = colors.onSurface)
             method.sub?.let {
                 Text(
                     it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = colors.onSurfaceVariantSummary,
                 )
             }
         }
         RadioButton(
             selected = selected == method,
             onClick = { onSelect(method) },
-            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary),
         )
     }
 }
@@ -824,7 +807,7 @@ private fun BankCardMark(width: Dp, height: Dp) {
             .size(width = width, height = height)
             .clip(RoundedCornerShape(height * 0.22f))
             .background(Color.White)
-            .border(0.5.dp, Color(0x33000000), RoundedCornerShape(height * 0.22f))
+            .border(0.5.dp, Color.Black.copy(alpha = 0.2f), RoundedCornerShape(height * 0.22f))
             .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -855,9 +838,10 @@ private fun BankCardMark(width: Dp, height: Dp) {
 
 @Composable
 private fun PayBottomBar(total: String, note: String, buttonText: String, onPay: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
     Surface(
         shadowElevation = 12.dp,
-        color = MaterialTheme.colorScheme.surface,
+        color = colors.surface,
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding(),
@@ -871,31 +855,31 @@ private fun PayBottomBar(total: String, note: String, buttonText: String, onPay:
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     "合计",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = colors.onSurfaceVariantSummary,
                 )
                 Text(
                     total,
-                    style = MaterialTheme.typography.titleLarge,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = colors.primary,
                 )
                 Text(
                     note,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = colors.onSurfaceVariantSummary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Button(
+            TextButton(
+                text = buttonText,
                 onClick = onPay,
-                shape = RoundedCornerShape(50),
                 modifier = Modifier.height(48.dp),
-            ) {
-                Text(buttonText, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            }
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                insideMargin = PaddingValues(horizontal = 20.dp, vertical = 11.dp),
+            )
         }
     }
 }

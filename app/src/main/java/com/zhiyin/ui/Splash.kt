@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,9 +38,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.R
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun SplashContent(onTimeout: () -> Unit) {
@@ -73,10 +74,11 @@ fun SplashContent(onTimeout: () -> Unit) {
         label = "textAlpha",
     )
 
+    val colors = MiuixTheme.colorScheme
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface),
+            .background(colors.surface),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -97,16 +99,16 @@ fun SplashContent(onTimeout: () -> Unit) {
             Spacer(Modifier.height(18.dp))
             Text(
                 "灵心",
-                style = MaterialTheme.typography.headlineMedium,
+                fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.onSurface,
                 modifier = Modifier.graphicsLayer { alpha = textAlpha },
             )
             Spacer(Modifier.height(6.dp))
             Text(
                 "懂你的AI陪伴",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                color = colors.onSurfaceVariantSummary,
                 modifier = Modifier.graphicsLayer { alpha = textAlpha },
             )
             Spacer(Modifier.height(40.dp))
@@ -133,7 +135,7 @@ private fun BouncingDots() {
                 modifier = Modifier
                     .offset { IntOffset(0, dy.roundToInt()) }
                     .size(10.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                    .background(MiuixTheme.colorScheme.primary, CircleShape),
             )
         }
     }

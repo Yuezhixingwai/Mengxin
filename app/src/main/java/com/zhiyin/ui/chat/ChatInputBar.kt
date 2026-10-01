@@ -1,4 +1,4 @@
-package com.zhiyin.ui.chat
+﻿package com.zhiyin.ui.chat
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,17 +52,6 @@ import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.rounded.SwapHoriz
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -88,7 +78,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
@@ -97,6 +89,15 @@ import com.zhiyin.logic.chat.ChatEngine
 import com.zhiyin.logic.util.StickerManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -193,7 +194,7 @@ fun ChatInputBar(
         modifier = modifier
             .fillMaxWidth()
             .background(
-                if (transparentBackground) Color.Transparent else MaterialTheme.colorScheme.surface
+                if (transparentBackground) Color.Transparent else MiuixTheme.colorScheme.surface
             ),
     ) {
         AnimatedVisibility(
@@ -283,16 +284,17 @@ fun ChatInputBar(
                     .padding(horizontal = 12.dp),
             ) {
                 Surface(
+                    onClick = { longEditorOpen = true },
                     shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = MiuixTheme.colorScheme.surfaceContainerHigh,
                 ) {
-                    TextButton(
-                        onClick = { longEditorOpen = true },
-                        shape = RoundedCornerShape(50),
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             "已输入${input.length}字",
-                            style = MaterialTheme.typography.labelMedium,
+                            fontSize = 12.sp,
                         )
                         Spacer(Modifier.width(2.dp))
                         Icon(
@@ -329,7 +331,7 @@ fun ChatInputBar(
                     Icon(
                         Icons.Rounded.Add,
                         contentDescription = "更多功能",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     )
                 }
                 TextField(
@@ -338,16 +340,11 @@ fun ChatInputBar(
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 39.dp, max = 140.dp),
-                    placeholder = { Text("写点什么…", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                    ),
+                    label = "写点什么…",
+                    useLabelAsPlaceholder = true,
+                    cornerRadius = 24.dp,
                     maxLines = 4,
+                    insideMargin = DpSize(16.dp, 12.dp),
                 )
                 IconButton(
                     onClick = { panel = if (panel == "sticker") "none" else "sticker" },
@@ -356,10 +353,10 @@ fun ChatInputBar(
                     Icon(
                         Icons.Outlined.EmojiEmotions,
                         contentDescription = "表情包",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     )
                 }
-                FilledIconButton(
+                IconButton(
                     onClick = {
                         if (input.isNotBlank()) {
                             onSend(input.trim())
@@ -368,14 +365,22 @@ fun ChatInputBar(
                     },
                     enabled = input.isNotBlank(),
                     modifier = Modifier.size(44.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
+                    backgroundColor = if (input.isNotBlank()) {
+                        MiuixTheme.colorScheme.primary
+                    } else {
+                        MiuixTheme.colorScheme.surfaceContainerHigh
+                    },
                 ) {
-                    Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "发送", modifier = Modifier.size(20.dp))
+                    Icon(
+                        Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = "发送",
+                        modifier = Modifier.size(20.dp),
+                        tint = if (input.isNotBlank()) {
+                            MiuixTheme.colorScheme.onPrimary
+                        } else {
+                            MiuixTheme.colorScheme.onSurfaceContainerVariant
+                        },
+                    )
                 }
             }
         }
@@ -407,13 +412,13 @@ private fun ToolButton(icon: ImageVector, label: String, onClick: () -> Unit) {
         Box(
             modifier = Modifier
                 .size(52.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(16.dp)),
+                .background(MiuixTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(16.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+            Icon(icon, contentDescription = label, tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.height(6.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceContainerVariant)
     }
 }
 
@@ -436,24 +441,24 @@ private fun StickerPanel(onPick: (String) -> Unit, onAdd: () -> Unit, onOpenShop
             Box(
                 modifier = Modifier
                     .size(72.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+                    .background(MiuixTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
                     .clickable(onClick = onAdd),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Add, contentDescription = "添加表情包", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Rounded.Add, contentDescription = "添加表情包", tint = MiuixTheme.colorScheme.onSurfaceContainerVariant)
             }
         }
         item {
             Column(
                 modifier = Modifier
                     .size(72.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp))
+                    .background(MiuixTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp))
                     .clickable(onClick = onOpenShop),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text("🛍", style = MaterialTheme.typography.titleMedium)
-                Text("商城", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text("🛍", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("商城", fontSize = 12.sp, color = MiuixTheme.colorScheme.onPrimaryContainer)
             }
         }
         itemsIndexed(customs) { _, name ->
@@ -553,8 +558,8 @@ private fun HoldToTalk(
                 .height(39.dp)
                 .clip(RoundedCornerShape(24.dp))
                 .background(
-                    if (recording) MaterialTheme.colorScheme.errorContainer
-                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                    if (recording) MiuixTheme.colorScheme.errorContainer
+                    else MiuixTheme.colorScheme.surfaceContainerHigh
                 )
                 .pointerInput(Unit) {
                     detectTapGestures(
@@ -593,18 +598,17 @@ private fun HoldToTalk(
                         modifier = Modifier
                             .size(10.dp)
                             .background(
-                                MaterialTheme.colorScheme.error.copy(alpha = alpha),
+                                MiuixTheme.colorScheme.error.copy(alpha = alpha),
                                 CircleShape,
                             ),
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("${elapsed / 1000.0}s", style = MaterialTheme.typography.bodyMedium)
+                    Text("${elapsed / 1000.0}s", fontSize = 14.sp)
                     Spacer(Modifier.width(8.dp))
                 }
                 Text(
                     if (recording) "松开 发送" else "按住 说话",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = MiuixTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -613,7 +617,7 @@ private fun HoldToTalk(
             onClick = { onCancel() },
             modifier = Modifier.size(44.dp),
         ) {
-            Text("取消", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("取消", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceContainerVariant)
         }
     }
 }
@@ -647,7 +651,7 @@ private fun LongTextEditor(
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding(),
-            color = MaterialTheme.colorScheme.surface,
+            color = MiuixTheme.colorScheme.surface,
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(
@@ -657,20 +661,20 @@ private fun LongTextEditor(
                         .padding(horizontal = 4.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = onDismiss) { Text("取消") }
+                    TextButton(text = "取消", onClick = onDismiss, insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp), minHeight = 40.dp)
                     Text(
                         "长文本编辑",
-                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { onApply(text) }) { Text("完成") }
+                    TextButton(text = "完成", onClick = { onApply(text) }, insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp), minHeight = 40.dp)
                 }
                 Text(
                     "${text.length}字",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     modifier = Modifier
                         .align(Alignment.End)
                         .padding(horizontal = 20.dp),
@@ -683,20 +687,14 @@ private fun LongTextEditor(
                         .weight(1f)
                         .fillMaxWidth()
                         .focusRequester(focusRequester),
-                    placeholder = { Text("输入文本…", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                    ),
+                    label = "输入文本…",
+                    useLabelAsPlaceholder = true,
                 )
                 Button(
                     onClick = { if (text.isNotBlank()) onSend(text.trim()) },
                     enabled = text.isNotBlank(),
-                    shape = RoundedCornerShape(50),
+                    cornerRadius = 50.dp,
+                    colors = ButtonDefaults.buttonColorsPrimary(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 12.dp)

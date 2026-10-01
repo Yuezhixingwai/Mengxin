@@ -15,9 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -39,12 +36,15 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Text
 
 @Composable
 fun ImageCropperDialog(
@@ -129,7 +129,11 @@ fun ImageCropperDialog(
                             },
                     )
                 } ?: Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color.White)
+                    CircularProgressIndicator(
+                        colors = top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults.progressIndicatorColors(
+                            Color.White,
+                        ),
+                    )
                 }
             }
 
@@ -143,7 +147,7 @@ fun ImageCropperDialog(
                 Text(
                     "取消",
                     color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
+                    fontSize = 16.sp,
                     modifier = Modifier
                         .clickable(onClick = onCancel)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -152,7 +156,7 @@ fun ImageCropperDialog(
                 Text(
                     if (confirming) "处理中…" else "确认",
                     color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .clickable {

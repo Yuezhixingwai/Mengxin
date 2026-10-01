@@ -1,4 +1,4 @@
-package com.zhiyin.ui.settings
+﻿package com.zhiyin.ui.settings
 
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,20 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.common.BitMatrix
@@ -56,6 +45,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.zhiyin.data.AppSession
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.net.ApiGateway
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.CardContainer
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.components.LingXinSheet
@@ -66,6 +56,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -161,7 +160,6 @@ private fun loadBindings(): List<WechatBindingEntry> {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BindingsScreen(
     appVm: AppViewModel,
@@ -169,6 +167,7 @@ fun BindingsScreen(
     onBindWechat: (Int, String?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val colors = MiuixTheme.colorScheme
     val context = LocalContext.current
     var bindings by remember { mutableStateOf<List<WechatBindingEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -184,147 +183,137 @@ fun BindingsScreen(
     }
     LaunchedEffect(Unit) { load() }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("微信 / 外部绑定", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
-
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "微信 / 外部绑定",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
+            )
+        },
+    ) { padding ->
         RubberBandBox(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-        ) {
-            CardContainer {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Text("微信绑定", style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "扫码绑定微信后，微信消息会由绑定的角色自动回复",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .clickable { showCharacterPicker = true }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                CardContainer {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text("微信绑定", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            "回复角色",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            "扫码绑定微信后，微信消息会由绑定的角色自动回复",
+                            fontSize = 13.sp,
+                            color = colors.onSurfaceVariantSummary,
                         )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            bindCharacter?.name ?: "不绑定角色",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Icon(
-                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = { onBindWechat(bindCharacter?.id ?: -1, bindCharacter?.name) },
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(46.dp),
-                    ) {
-                        Text("扫码绑定微信")
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    if (loading) {
-                        Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                        }
-                    } else if (bindings.isEmpty()) {
-                        Text(
-                            "暂无已绑定的微信",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp),
-                        )
-                    } else {
-                        bindings.forEach { b ->
-                            val charName = appVm.friends.find { it.id == b.characterId }?.name
-                            ListItem(
-                                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                                headlineContent = { Text("微信 ${b.accountId.takeLast(8)}", style = MaterialTheme.typography.bodyMedium) },
-                                supportingContent = {
-                                    Text(
-                                        "回复角色：${charName ?: "未指定角色"} · ${b.updatedAt}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                    )
-                                },
-                                trailingContent = {
-                                    Text(
-                                        "运行中",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                },
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(colors.surfaceContainerHigh)
+                                .clickable { showCharacterPicker = true }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "回复角色",
+                                fontSize = 14.sp,
+                                color = colors.onSurfaceVariantSummary,
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                bindCharacter?.name ?: "不绑定角色",
+                                fontSize = 14.sp,
+                                color = colors.primary,
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = colors.onSurfaceVariantActions,
                             )
                         }
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = { onBindWechat(bindCharacter?.id ?: -1, bindCharacter?.name) },
+                            cornerRadius = 23.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp),
+                                insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                        ) {
+                            Text("扫码绑定微信", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.onPrimary)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        if (loading) {
+                            Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            }
+                        } else if (bindings.isEmpty()) {
+                            Text(
+                                "暂无已绑定的微信",
+                                fontSize = 13.sp,
+                                color = colors.onSurfaceVariantSummary,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                            )
+                        } else {
+                            bindings.forEach { b ->
+                                val charName = appVm.friends.find { it.id == b.characterId }?.name
+                                BindingInfoRow(
+                                    title = "微信 ${b.accountId.takeLast(8)}",
+                                    summary = "回复角色：${charName ?: "未指定角色"} · ${b.updatedAt}",
+                                    trailing = "运行中",
+                                )
+                            }
+                        }
                     }
                 }
-            }
 
-            Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(8.dp))
 
-            CardContainer {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Text("外部接入（QQ Bot / 插件）", style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "QQ 机器人、微信 ClawBot 插件等外部通道可通过统一接口接入，发送消息即由 AI 回复。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "POST ${ApiGateway.ZHIYIN_BASE}/api/clawbot\n" +
-                            "Header: Authorization: Bearer <你的Token>\n" +
-                            "Body: {\"content\": \"消息\"}\n" +
-                            "返回: {\"reply\": \"AI回复\"}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(10.dp),
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = {
-                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                            cm.setPrimaryClip(android.content.ClipData.newPlainText("clawbot", ApiGateway.ZHIYIN_BASE + "/api/clawbot"))
-                            appVm.showToast("接口地址已复制")
-                        },
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier.fillMaxWidth().height(42.dp),
-                    ) {
-                        Text("复制接口地址", style = MaterialTheme.typography.labelLarge)
+                CardContainer {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text("外部接入（QQ Bot / 插件）", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "QQ 机器人、微信 ClawBot 插件等外部通道可通过统一接口接入，发送消息即由 AI 回复。",
+                            fontSize = 13.sp,
+                            color = colors.onSurfaceVariantSummary,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "POST ${ApiGateway.ZHIYIN_BASE}/api/clawbot\n" +
+                                "Header: Authorization: Bearer <你的Token>\n" +
+                                "Body: {\"content\": \"消息\"}\n" +
+                                "返回: {\"reply\": \"AI回复\"}",
+                            fontSize = 12.sp,
+                            color = colors.onSurfaceVariantActions,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(colors.surfaceContainerHigh)
+                                .padding(10.dp),
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        TextButton(
+                            text = "复制接口地址",
+                            onClick = {
+                                val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("clawbot", ApiGateway.ZHIYIN_BASE + "/api/clawbot"))
+                                appVm.showToast("接口地址已复制")
+                            },
+                            modifier = Modifier.fillMaxWidth().height(42.dp),
+                            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        )
                     }
                 }
-            }
 
-            Spacer(Modifier.height(32.dp))
-        }
+                Spacer(Modifier.height(32.dp))
+            }
         }
     }
 
@@ -333,32 +322,27 @@ fun BindingsScreen(
             Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Text(
                     "选择微信回复角色",
-                    style = MaterialTheme.typography.titleMedium,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
+                    color = colors.onSurface,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                 )
-                ListItem(
-                    modifier = Modifier.clickable {
+                SheetPickRow(
+                    title = "不绑定角色",
+                    selected = bindCharacter == null,
+                    onClick = {
                         bindCharacter = null
                         showCharacterPicker = false
                     },
-                    colors = ListItemDefaults.colors(
-                        containerColor = if (bindCharacter == null) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                        else MaterialTheme.colorScheme.surfaceContainer,
-                    ),
-                    headlineContent = { Text("不绑定角色") },
                 )
                 appVm.friends.forEach { f ->
-                    ListItem(
-                        modifier = Modifier.clickable {
+                    SheetPickRow(
+                        title = f.name,
+                        selected = bindCharacter?.id == f.id,
+                        onClick = {
                             bindCharacter = f
                             showCharacterPicker = false
                         },
-                        colors = ListItemDefaults.colors(
-                            containerColor = if (bindCharacter?.id == f.id) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                            else MaterialTheme.colorScheme.surfaceContainer,
-                        ),
-                        headlineContent = { Text(f.name) },
                     )
                 }
                 Spacer(Modifier.height(16.dp))
@@ -367,7 +351,49 @@ fun BindingsScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** 绑定列表信息行（替代旧 M3 ListItem：标题 + 摘要 + 右侧状态文字）。 */
+@Composable
+private fun BindingInfoRow(title: String, summary: String, trailing: String) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 14.sp, color = colors.onSurface)
+            Spacer(Modifier.height(2.dp))
+            Text(summary, fontSize = 12.sp, color = colors.onSurfaceVariantActions)
+        }
+        Text(
+            trailing,
+            fontSize = 12.sp,
+            color = colors.primary,
+        )
+    }
+}
+
+/** 底部抽屉里的可选中列表行（替代旧 M3 ListItem 选中态）。 */
+@Composable
+private fun SheetPickRow(title: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .background(
+                if (selected) colors.primaryContainer.copy(alpha = 0.4f) else colors.surfaceContainer,
+                RoundedCornerShape(12.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, fontSize = 16.sp, color = colors.onSurface)
+    }
+}
+
 @Composable
 fun WechatBindScreen(
     appVm: AppViewModel,
@@ -376,6 +402,7 @@ fun WechatBindScreen(
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val colors = MiuixTheme.colorScheme
     var statusText by remember { mutableStateOf("点击下方按钮生成二维码\n用微信扫码即可绑定") }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -503,87 +530,87 @@ fun WechatBindScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = {
-                Text(
-                    if (characterName != null) "$characterName - 微信绑定" else "微信绑定",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
-
-        RubberBandBox(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(Modifier.height(24.dp))
-            Text(
-                statusText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = if (characterName != null) "$characterName - 微信绑定" else "微信绑定",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
             )
-            Spacer(Modifier.height(24.dp))
-            Box(
+        },
+    ) { padding ->
+        RubberBandBox(modifier = Modifier.fillMaxSize()) {
+            Column(
                 modifier = Modifier
-                    .size(280.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                contentAlignment = Alignment.Center,
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                qrBitmap?.let {
-                    Image(
-                        bitmap = it.asImageBitmap(),
-                        contentDescription = "绑定二维码",
-                        modifier = Modifier
-                            .size(260.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                    )
-                } ?: Text(
-                    "二维码将显示在这里",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.height(28.dp))
-            if (done) {
+                Spacer(Modifier.height(24.dp))
                 Text(
-                    "微信消息将由 ${characterName ?: "绑定的角色"} 自动回复",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    statusText,
+                    fontSize = 14.sp,
+                    color = colors.onSurfaceVariantSummary,
+                    textAlign = TextAlign.Center,
                 )
-            } else {
-                Button(
-                    onClick = { requestQr() },
-                    enabled = !busy && !qrActive,
-                    shape = RoundedCornerShape(50),
+                Spacer(Modifier.height(24.dp))
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
+                        .size(280.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(colors.surfaceContainerHigh),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        when {
-                            busy -> "生成中…"
-                            qrActive -> "等待扫码确认"
-                            statusText.startsWith("获取二维码失败") || statusText.startsWith("二维码多次过期") || statusText.startsWith("扫码超时") -> "重新生成"
-                            qrBitmap != null -> "重新生成二维码"
-                            else -> "生成绑定二维码"
-                        }
+                    qrBitmap?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = "绑定二维码",
+                            modifier = Modifier
+                                .size(260.dp)
+                                .clip(RoundedCornerShape(12.dp)),
+                        )
+                    } ?: Text(
+                        "二维码将显示在这里",
+                        fontSize = 13.sp,
+                        color = colors.onSurfaceVariantSummary,
                     )
                 }
+                Spacer(Modifier.height(28.dp))
+                if (done) {
+                    Text(
+                        "微信消息将由 ${characterName ?: "绑定的角色"} 自动回复",
+                        fontSize = 13.sp,
+                        color = colors.primary,
+                    )
+                } else {
+                    Button(
+                        onClick = { requestQr() },
+                        enabled = !busy && !qrActive,
+                        cornerRadius = 24.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+                    ) {
+                        Text(
+                            when {
+                                busy -> "生成中…"
+                                qrActive -> "等待扫码确认"
+                                statusText.startsWith("获取二维码失败") || statusText.startsWith("二维码多次过期") || statusText.startsWith("扫码超时") -> "重新生成"
+                                qrBitmap != null -> "重新生成二维码"
+                                else -> "生成绑定二维码"
+                            },
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.onPrimary,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(40.dp))
             }
-            Spacer(Modifier.height(40.dp))
-        }
         }
     }
 }

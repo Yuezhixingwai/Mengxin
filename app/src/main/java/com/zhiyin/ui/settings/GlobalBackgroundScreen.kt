@@ -21,19 +21,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,7 +41,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.data.ImageUtils
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.CardContainer
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.chat.ContentCopy
@@ -60,12 +51,20 @@ import com.zhiyin.ui.components.ImageCropperDialog
 import com.zhiyin.ui.vm.AppViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Slider
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
+    val colors = MiuixTheme.colorScheme
     val configuration = LocalConfiguration.current
     val screenAspect = configuration.screenWidthDp.toFloat() / configuration.screenHeightDp.toFloat()
 
@@ -91,29 +90,31 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("全局背景", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
-
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "全局背景",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
+            )
+        },
+    ) { padding ->
         RubberBandBox(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(padding)
                     .verticalScroll(rememberScrollState()),
             ) {
                 CardContainer {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("背景预览", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text("背景预览", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
                         Spacer(Modifier.height(4.dp))
                         Text(
                             "聊天界面不生效！",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            color = colors.onSurfaceVariantActions,
                         )
                         Spacer(Modifier.height(12.dp))
                         Box(
@@ -134,12 +135,12 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.45f)),
+                                            .background(colors.surfaceContainer.copy(alpha = 0.45f)),
                                     )
                                     Text(
                                         "亚克力",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 12.sp,
+                                        color = colors.onSurface,
                                         modifier = Modifier
                                             .padding(8.dp)
                                             .align(Alignment.BottomEnd),
@@ -149,21 +150,21 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                        .background(colors.surfaceContainerHigh),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Icon(
                                             Icons.Rounded.Wallpaper,
                                             contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = colors.onSurfaceContainerVariant,
                                             modifier = Modifier.size(36.dp),
                                         )
                                         Spacer(Modifier.height(8.dp))
                                         Text(
                                             "请选择背景图片",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 13.sp,
+                                            color = colors.onSurfaceVariantSummary,
                                         )
                                     }
                                 }
@@ -174,17 +175,21 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            FilledTonalButton(
+                            Button(
                                 onClick = { pick.launch("image/*") },
-                                shape = RoundedCornerShape(50),
                                 enabled = !saving,
+                                cornerRadius = 25.dp,
+                                colors = ButtonDefaults.buttonColors(
+                                    color = colors.secondaryContainer,
+                                    contentColor = colors.onSecondaryContainer,
+                                ),
                                 modifier = Modifier.weight(1f),
                             ) {
                                 Icon(Icons.Rounded.Wallpaper, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text(if (bitmap == null) "选择" else "更换")
+                                Text(if (bitmap == null) "选择" else "更换", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
-                            OutlinedButton(
+                            Button(
                                 onClick = {
                                     appVm.setGlobalBgPath("")
                                     try {
@@ -192,12 +197,16 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
                                     } catch (_: Exception) {
                                     }
                                 },
-                                shape = RoundedCornerShape(50),
                                 enabled = bitmap != null,
+                                cornerRadius = 25.dp,
+                                colors = ButtonDefaults.buttonColors(
+                                    color = colors.surfaceContainerHigh,
+                                    contentColor = colors.onSurface,
+                                ),
                             ) {
                                 Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("清除")
+                                Text("清除", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -208,8 +217,8 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
                         SettingSwitchRow("启用全局背景", enabled) { appVm.setGlobalBgEnabled(it) }
                         Text(
                             if (path.isEmpty()) "需先选择一张背景图片" else "开启后所有非聊天页面生效",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            color = colors.onSurfaceVariantActions,
                             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
                         )
                     }
@@ -220,8 +229,8 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
                         SettingSwitchRow("亚克力效果", acrylic) { appVm.setGlobalBgAcrylic(it) }
                         Text(
                             "在背景图上叠加模糊效果",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            color = colors.onSurfaceVariantActions,
                             modifier = Modifier.padding(horizontal = 20.dp),
                         )
                         if (acrylic) {
@@ -231,8 +240,8 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text("模糊强度", modifier = Modifier.weight(1f))
-                                    Text("${blur}dp", color = MaterialTheme.colorScheme.primary)
+                                    Text("模糊强度", fontSize = 16.sp, color = colors.onSurface, modifier = Modifier.weight(1f))
+                                    Text("${blur}dp", fontSize = 16.sp, color = colors.primary)
                                 }
                                 var sliderPos by remember(blur) { mutableFloatStateOf(blur.toFloat()) }
                                 Slider(

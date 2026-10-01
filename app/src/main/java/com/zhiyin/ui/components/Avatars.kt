@@ -14,8 +14,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,6 +28,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import com.zhiyin.data.AvatarStore
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun PersonaAvatar(
@@ -73,13 +73,13 @@ fun GroupAvatar(size: Dp, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .size(size)
-            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(size * 0.28f)),
+            .background(MiuixTheme.colorScheme.primaryContainer, RoundedCornerShape(size * 0.28f)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             Icons.Filled.Groups,
             contentDescription = "群聊",
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            tint = MiuixTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.size(size * 0.55f),
         )
     }

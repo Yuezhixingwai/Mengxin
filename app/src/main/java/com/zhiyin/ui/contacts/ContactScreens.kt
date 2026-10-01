@@ -1,4 +1,4 @@
-package com.zhiyin.ui.contacts
+﻿package com.zhiyin.ui.contacts
 
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,12 +20,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
@@ -34,28 +35,6 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.UploadFile
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Tab
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,16 +46,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.data.AppSession
 import com.zhiyin.data.AvatarStore
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.data.MsgRepo
 import com.zhiyin.logic.data.PersonaManager
 import com.zhiyin.logic.net.ApiGateway
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.EmptyHint
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.components.LingXinDialog
@@ -86,8 +69,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.concurrent.thread
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Checkbox
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddFriendScreen(
     appVm: AppViewModel,
@@ -96,6 +92,7 @@ fun AddFriendScreen(
     onOpenCreate: () -> Unit,
 ) {
     val context = LocalContext.current
+    val colors = MiuixTheme.colorScheme
     var tab by remember { mutableStateOf("plaza") }
     var mine by remember { mutableStateOf<List<com.zhiyin.data.PersonaLight>>(emptyList()) }
     var favs by remember { mutableStateOf<List<com.zhiyin.data.PersonaLight>>(emptyList()) }
@@ -171,97 +168,67 @@ fun AddFriendScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("添加朋友", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
+    val tabKeys = listOf("plaza", "mine", "favs", "import")
 
-        ScrollableTabRow(
-            selectedTabIndex = when (tab) {
-                "plaza" -> 0
-                "mine" -> 1
-                "favs" -> 2
-                else -> 3
-            },
-            containerColor = MaterialTheme.colorScheme.surface,
-            edgePadding = 12.dp,
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "添加朋友",
+                color = colors.surface,
+                navigationIcon = { BackButton(onClick = onBack) },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
         ) {
-            listOf("广场" to "plaza", "我发布的" to "mine", "我收藏的" to "favs", "导入" to "import").forEachIndexed { i, (label, key) ->
-                Tab(
-                    selected = tab == key,
-                    onClick = { tab = key },
-                    text = { Text(label, fontWeight = if (tab == key) FontWeight.Bold else FontWeight.Normal) },
-                )
-            }
-        }
+            TabRow(
+                tabs = listOf("广场", "我发布的", "我收藏的", "导入"),
+                selectedTabIndex = tabKeys.indexOf(tab).coerceAtLeast(0),
+                onTabSelected = { tab = tabKeys[it] },
+                listState = rememberLazyListState(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
 
-        when (tab) {
-            "mine" -> {
-                if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                else PlazaContactList(mine, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
-            }
-            "favs" -> {
-                if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                else PlazaContactList(favs, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
-            }
-            "import" -> Column {
-                ListItem(
-                    modifier = Modifier.clickable { doubaoImport.launch("application/json") },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    leadingContent = {
-                        Surface(
-                            shape = RoundedCornerShape(13.dp),
-                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f),
-                            modifier = Modifier.size(46.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
-                            }
-                        }
-                    },
-                    headlineContent = { Text("导入豆包人设") },
-                    supportingContent = { Text("从豆包导出的JSON文件一键导入") },
-                )
-            }
-            else -> Column {
-                ListItem(
-                    modifier = Modifier.clickable(onClick = onOpenPlaza),
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    leadingContent = {
-                        Surface(
-                            shape = RoundedCornerShape(13.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                            modifier = Modifier.size(46.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Explore, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    },
-                    headlineContent = { Text("去人设广场挑选") },
-                    supportingContent = { Text("热门榜、分类、推荐，发现喜欢的人设") },
-                )
-                ListItem(
-                    modifier = Modifier.clickable(onClick = onOpenCreate),
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    leadingContent = {
-                        Surface(
-                            shape = RoundedCornerShape(13.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                            modifier = Modifier.size(46.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    },
-                    headlineContent = { Text("创建自定义人设") },
-                    supportingContent = { Text("设定名称、人设、图片，可选择公开分享") },
-                )
+            when (tab) {
+                "mine" -> {
+                    if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    else PlazaContactList(mine, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
+                }
+                "favs" -> {
+                    if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    else PlazaContactList(favs, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
+                }
+                "import" -> Column {
+                    EntryRow(
+                        icon = Icons.Rounded.UploadFile,
+                        iconTint = colors.primaryVariant,
+                        title = "导入豆包人设",
+                        summary = "从豆包导出的JSON文件一键导入",
+                        onClick = { doubaoImport.launch("application/json") },
+                    )
+                }
+                else -> Column {
+                    EntryRow(
+                        icon = Icons.Rounded.Explore,
+                        iconTint = colors.primary,
+                        title = "去人设广场挑选",
+                        summary = "热门榜、分类、推荐，发现喜欢的人设",
+                        onClick = onOpenPlaza,
+                    )
+                    EntryRow(
+                        icon = Icons.Rounded.Add,
+                        iconTint = colors.primary,
+                        title = "创建自定义人设",
+                        summary = "设定名称、人设、图片，可选择公开分享",
+                        onClick = onOpenCreate,
+                    )
+                }
             }
         }
     }
@@ -278,71 +245,109 @@ fun AddFriendScreen(
 }
 
 @Composable
+private fun EntryRow(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    summary: String,
+    onClick: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .background(iconTint.copy(alpha = 0.14f), RoundedCornerShape(13.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 16.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(summary, fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+        }
+    }
+}
+
+@Composable
 private fun PlazaContactList(
     list: List<com.zhiyin.data.PersonaLight>,
     appVm: AppViewModel,
     onAdd: (com.zhiyin.data.PersonaLight) -> Unit,
     onOpenCreate: () -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     if (list.isEmpty()) {
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text("这里还没有人设", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("这里还没有人设", fontSize = 16.sp, color = colors.onSurfaceVariantSummary)
             Spacer(Modifier.height(8.dp))
             Text(
                 "去创建或发布一个吧",
-                color = MaterialTheme.colorScheme.primary,
+                color = colors.primary,
                 modifier = Modifier.clickable(onClick = onOpenCreate).padding(6.dp),
             )
         }
         return
     }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp)) {
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         items(list, key = { it.id }) { p ->
             val already = appVm.friends.any { it.name == p.name }
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                leadingContent = {
-                    Box(
-                        Modifier.size(46.dp).clip(RoundedCornerShape(23.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (p.avatarUrl.isNotEmpty()) {
-                            com.zhiyin.ui.components.RemoteImage(url = p.avatarUrl, contentDescription = p.name, modifier = Modifier.fillMaxSize(), placeholder = {
-                                com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(46.dp), size = 46.dp, shape = RoundedCornerShape(23.dp))
-                            })
-                        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(46.dp).clip(RoundedCornerShape(23.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (p.avatarUrl.isNotEmpty()) {
+                        com.zhiyin.ui.components.RemoteImage(url = p.avatarUrl, contentDescription = p.name, modifier = Modifier.fillMaxSize(), placeholder = {
                             com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(46.dp), size = 46.dp, shape = RoundedCornerShape(23.dp))
-                        }
+                        })
+                    } else {
+                        com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(46.dp), size = 46.dp, shape = RoundedCornerShape(23.dp))
                     }
-                },
-                headlineContent = { Text(p.name) },
-                supportingContent = {
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(p.name, fontSize = 16.sp)
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         p.keywords.ifEmpty { p.descriptionLight }.take(60),
+                        fontSize = 13.sp,
+                        color = colors.onSurfaceVariantSummary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                },
-                trailingContent = {
-                    Button(
-                        onClick = { onAdd(p) },
-                        enabled = !already,
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    ) {
-                        Text(if (already) "已添加" else "添加")
-                    }
-                },
-            )
+                }
+                Spacer(Modifier.width(10.dp))
+                TextButton(
+                    text = if (already) "已添加" else "添加",
+                    onClick = { onAdd(p) },
+                    enabled = !already,
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    minHeight = 36.dp,
+                )
+            }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendSettingsScreen(
     friend: FriendManager.Friend,
@@ -353,6 +358,7 @@ fun FriendSettingsScreen(
     onOpenArtAvatars: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val colors = MiuixTheme.colorScheme
     val official = remember { PersonaManager.isOfficial(context, friend.name) }
     val remarkPrefs = remember { context.getSharedPreferences("zhiyin_remark", 0) }
     val savedRemark = remember(friend.id) {
@@ -407,19 +413,21 @@ fun FriendSettingsScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("好友设置", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
-
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "好友设置",
+                color = colors.surface,
+                navigationIcon = { BackButton(onClick = onBack) },
+            )
+        },
+    ) { padding ->
         RubberBandBox(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
             Column(
@@ -434,41 +442,52 @@ fun FriendSettingsScreen(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .size(26.dp)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape),
+                            .background(colors.primary, CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("改", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
+                        Text("改", fontSize = 12.sp, color = colors.onPrimary)
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                Text(friend.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(friend.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = if (official) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = if (official) colors.primaryContainer
+                    else colors.surfaceContainerHigh,
                     modifier = Modifier.padding(top = 6.dp),
                 ) {
                     Text(
                         if (official) "官方人设" else "自定义人设",
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (official) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        color = if (official) colors.onPrimaryContainer
+                        else colors.onSurfaceVariantSummary,
                     )
                 }
                 Spacer(Modifier.height(12.dp))
-                FilledTonalButton(
-                    onClick = onOpenArtAvatars,
+                Surface(
                     shape = RoundedCornerShape(50),
+                    color = colors.primaryContainer,
+                    onClick = onOpenArtAvatars,
                 ) {
-                    Icon(
-                        Icons.Rounded.Palette,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("选插画头像", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Rounded.Palette,
+                            contentDescription = null,
+                            tint = colors.onPrimaryContainer,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "选插画头像",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.onPrimaryContainer,
+                        )
+                    }
                 }
             }
 
@@ -484,25 +503,25 @@ fun FriendSettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("AI人设描述", style = MaterialTheme.typography.bodyLarge)
+                            Text("AI人设描述", fontSize = 16.sp)
                             Text(
                                 if (personaExpanded) "点击收起"
                                 else if (official) "官方内置人设，点击展开查看" else "已折叠，点击展开查看或修改",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp,
+                                color = colors.onSurfaceVariantSummary,
                             )
                         }
                         Icon(
                             if (personaExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
                             contentDescription = if (personaExpanded) "收起" else "展开",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = colors.onSurfaceVariantSummary,
                         )
                     }
                     AnimatedVisibility(visible = personaExpanded) {
                         if (official) {
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                color = colors.surfaceContainerHigh,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 6.dp),
@@ -510,28 +529,23 @@ fun FriendSettingsScreen(
                                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 15.dp)) {
                                     Text(
                                         "AI人设描述",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 12.sp,
+                                        color = colors.onSurfaceVariantSummary,
                                     )
                                     Text(
                                         "官方内置人设，内容不可查看与修改",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 14.sp,
+                                        color = colors.onSurfaceVariantSummary,
                                     )
                                 }
                             }
                         } else {
-                            OutlinedTextField(
+                            TextField(
                                 value = persona,
                                 onValueChange = { persona = it },
-                                placeholder = { Text("AI人设描述（性格、说话方式等）") },
+                                label = "AI人设描述（性格、说话方式等）",
+                                useLabelAsPlaceholder = true,
                                 minLines = 4,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    unfocusedBorderColor = Color.Transparent,
-                                ),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 6.dp),
@@ -546,17 +560,16 @@ fun FriendSettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("消息免打扰", style = MaterialTheme.typography.bodyLarge)
+                        Text("消息免打扰", fontSize = 16.sp)
                         Text(
                             "开启后不显示未读角标",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            color = colors.onSurfaceVariantSummary,
                         )
                     }
                     Switch(
                         checked = mute,
                         onCheckedChange = { mute = it },
-                        colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary),
                     )
                 }
             }
@@ -611,67 +624,78 @@ fun FriendSettingsScreen(
                     )
                     onBack()
                 },
-                shape = RoundedCornerShape(50),
+                cornerRadius = 25.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 10.dp)
                     .height(50.dp),
+                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             ) {
-                Text("保存修改")
+                Text("保存修改", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.onPrimary)
             }
 
             CardSection(title = "微信自动回复") {
-                ListItem(
-                    modifier = Modifier.clickable { onBindWechat(friend) },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    headlineContent = { Text("绑定微信自动回复") },
-                    supportingContent = {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onBindWechat(friend) }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("绑定微信自动回复", fontSize = 16.sp)
+                        Spacer(Modifier.height(2.dp))
                         Text(
                             when (wechatBound) {
                                 true -> "已绑定 · 微信消息将由「${friend.name}」自动回复"
                                 false -> "未绑定 · 绑定后微信消息由该角色自动回复"
                                 null -> "绑定后微信消息由该角色自动回复"
                             },
-                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 12.sp,
+                            color = colors.onSurfaceVariantSummary,
                         )
-                    },
-                    trailingContent = {
-                        Icon(
-                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = colors.onSurfaceVariantSummary,
+                    )
+                }
             }
 
             CardSection(title = "管理") {
-                ListItem(
-                    modifier = Modifier.clickable { showClear = true },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    leadingContent = {
-                        Icon(
-                            Icons.Rounded.DeleteOutline,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    },
-                    headlineContent = { Text("清空聊天记录", style = MaterialTheme.typography.bodyLarge) },
-                )
-                ListItem(
-                    modifier = Modifier.clickable { showDelete = true },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    leadingContent = {
-                        Icon(
-                            Icons.Rounded.Delete,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    },
-                    headlineContent = { Text("删除好友", color = MaterialTheme.colorScheme.error) },
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showClear = true }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Rounded.DeleteOutline,
+                        contentDescription = null,
+                        tint = colors.onSurfaceVariantSummary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Text("清空聊天记录", fontSize = 16.sp)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDelete = true }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Rounded.Delete,
+                        contentDescription = null,
+                        tint = colors.error,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Text("删除好友", fontSize = 16.sp, color = colors.error)
+                }
             }
             Spacer(Modifier.height(40.dp))
         }
@@ -721,18 +745,19 @@ fun FriendSettingsScreen(
 
 @Composable
 private fun CardSection(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    val colors = MiuixTheme.colorScheme
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = colors.surfaceContainer,
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 title,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                color = colors.onSurfaceVariantSummary,
                 modifier = Modifier.padding(bottom = 6.dp),
             )
             content()
@@ -742,96 +767,96 @@ private fun CardSection(title: String, content: @Composable androidx.compose.fou
 
 @Composable
 private fun SheetFieldIn(value: String, onValueChange: (String) -> Unit, hint: String) {
-    OutlinedTextField(
+    TextField(
         value = value,
         onValueChange = onValueChange,
-        placeholder = { Text(hint) },
+        label = hint,
+        useLabelAsPlaceholder = true,
         singleLine = true,
-        shape = RoundedCornerShape(14.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            unfocusedBorderColor = Color.Transparent,
-        ),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateGroupScreen(
     appVm: AppViewModel,
     onBack: () -> Unit,
     onCreated: (String, List<String>) -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     var groupName by remember { mutableStateOf("") }
     val selected = remember { mutableStateOf(setOf<Int>()) }
     val selectedNames = remember { mutableStateOf(listOf<String>()) }
     val friends = appVm.friends
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("创建群聊", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
-
-        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            OutlinedTextField(
-                value = groupName,
-                onValueChange = { groupName = it },
-                placeholder = { Text("群名称") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedBorderColor = Color.Transparent,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp),
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "创建群聊",
+                color = colors.surface,
+                navigationIcon = { BackButton(onClick = onBack) },
             )
-            Text(
-                "已选择 ${selected.value.size} 位好友",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 4.dp),
-            )
-        }
-
-        RubberBandBox(modifier = Modifier.weight(1f)) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            if (friends.isEmpty()) {
-                item { EmptyHint("还没有好友可添加") }
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                TextField(
+                    value = groupName,
+                    onValueChange = { groupName = it },
+                    label = "群名称",
+                    useLabelAsPlaceholder = true,
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                )
+                Text(
+                    "已选择 ${selected.value.size} 位好友",
+                    fontSize = 12.sp,
+                    color = colors.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
             }
-            items(friends, key = { it.id }) { friend ->
-                val checked = friend.id in selected.value
-                ListItem(
-                    modifier = Modifier.clickable {
-                        val newSel = selected.value.toMutableSet()
-                        val newNames = selectedNames.value.toMutableList()
-                        if (checked) {
-                            newSel.remove(friend.id)
-                            newNames.remove(friend.name)
-                        } else {
-                            newSel.add(friend.id)
-                            newNames.add(friend.name)
-                        }
-                        selected.value = newSel
-                        selectedNames.value = newNames
-                    },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    leadingContent = { PersonaAvatar(friend.id, friend.name, 44.dp) },
-                    headlineContent = { Text(friend.name) },
-                    trailingContent = {
+
+            RubberBandBox(modifier = Modifier.weight(1f)) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                if (friends.isEmpty()) {
+                    item { EmptyHint("还没有好友可添加") }
+                }
+                items(friends, key = { it.id }) { friend ->
+                    val checked = friend.id in selected.value
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val newSel = selected.value.toMutableSet()
+                                val newNames = selectedNames.value.toMutableList()
+                                if (checked) {
+                                    newSel.remove(friend.id)
+                                    newNames.remove(friend.name)
+                                } else {
+                                    newSel.add(friend.id)
+                                    newNames.add(friend.name)
+                                }
+                                selected.value = newSel
+                                selectedNames.value = newNames
+                            }
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PersonaAvatar(friend.id, friend.name, 44.dp)
+                        Spacer(Modifier.width(14.dp))
+                        Text(friend.name, fontSize = 16.sp, modifier = Modifier.weight(1f))
                         Checkbox(
-                            checked = checked,
-                            onCheckedChange = { _ ->
+                            state = if (checked) ToggleableState.On else ToggleableState.Off,
+                            onClick = {
                                 val newSel = selected.value.toMutableSet()
                                 val newNames = selectedNames.value.toMutableList()
                                 if (checked) {
@@ -844,41 +869,41 @@ fun CreateGroupScreen(
                                 selected.value = newSel
                                 selectedNames.value = newNames
                             },
-                            colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
                         )
-                    },
-                )
+                    }
+                }
             }
-        }
-        }
+            }
 
-        Button(
-            onClick = {
-                val gName = groupName.trim()
-                if (gName.isEmpty()) {
-                    appVm.showToast("请输入群名称")
-                    return@Button
-                }
-                if (selected.value.isEmpty()) {
-                    appVm.showToast("请选择至少一位好友")
-                    return@Button
-                }
-                com.zhiyin.logic.data.GroupManager.createGroup(
-                    appVm.getApplication(),
-                    gName,
-                    selected.value.toList(),
-                    selectedNames.value.toList(),
-                ) { _, _ ->
-                    onCreated(gName, selectedNames.value.toList())
-                }
-            },
-            shape = RoundedCornerShape(50),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .height(50.dp),
-        ) {
-            Text("创建群聊")
+            Button(
+                onClick = {
+                    val gName = groupName.trim()
+                    if (gName.isEmpty()) {
+                        appVm.showToast("请输入群名称")
+                        return@Button
+                    }
+                    if (selected.value.isEmpty()) {
+                        appVm.showToast("请选择至少一位好友")
+                        return@Button
+                    }
+                    com.zhiyin.logic.data.GroupManager.createGroup(
+                        appVm.getApplication(),
+                        gName,
+                        selected.value.toList(),
+                        selectedNames.value.toList(),
+                    ) { _, _ ->
+                        onCreated(gName, selectedNames.value.toList())
+                    }
+                },
+                cornerRadius = 25.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .height(50.dp),
+                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Text("创建群聊", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.onPrimary)
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-package com.zhiyin.ui.moments
+﻿package com.zhiyin.ui.moments
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -14,6 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -37,14 +38,6 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,10 +55,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.data.AppSession
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.net.ApiGateway
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.components.ImageCropperDialog
 import com.zhiyin.ui.components.LingXinDialog
@@ -81,6 +77,16 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 object MomentsImageCache {
     val cache = ConcurrentHashMap<String, ImageBitmap>()
@@ -127,7 +133,7 @@ fun WebImage(
             if (placeholder != null) {
                 placeholder()
             } else {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh))
+                Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surfaceContainerHigh))
             }
         }
     }
@@ -190,7 +196,6 @@ private fun parsePosts(resp: String): List<MomentPost> {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MomentsScreen(
     appVm: AppViewModel,
@@ -236,7 +241,7 @@ fun MomentsScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+    Box(modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
         RubberBandBox(modifier = Modifier.fillMaxSize()) {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             item {
@@ -262,13 +267,13 @@ fun MomentsScreen(
                         Box(
                             Modifier
                                 .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.primaryContainer),
+                                .background(MiuixTheme.colorScheme.primaryContainer),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 "点击设置朋友圈背景",
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.bodyMedium,
+                                color = MiuixTheme.colorScheme.onPrimaryContainer,
+                                fontSize = 14.sp,
                             )
                         }
                     }
@@ -295,8 +300,8 @@ fun MomentsScreen(
                     ) {
                         Text(
                             "还没有动态，点右下角发一条吧",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                         )
                     }
                 }
@@ -586,13 +591,13 @@ private fun MomentPostCard(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 post.nickname,
-                style = MaterialTheme.typography.titleSmall,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
+                color = MiuixTheme.colorScheme.primary,
             )
             if (post.content.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
-                Text(post.content, style = MaterialTheme.typography.bodyMedium)
+                Text(post.content, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurface)
             }
             if (post.images.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
@@ -602,14 +607,14 @@ private fun MomentPostCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     post.time,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
                     "赞${if (post.likesCount > 0) "(${post.likesCount})" else ""}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (post.liked) Color(0xFFE85D4A) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = if (post.liked) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable(onClick = onLike)
@@ -617,8 +622,8 @@ private fun MomentPostCard(
                 )
                 Text(
                     "评论",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable(onClick = onComment)
@@ -626,8 +631,8 @@ private fun MomentPostCard(
                 )
                 Text(
                     "AI评",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.primary,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable(onClick = onAiComment)
@@ -635,8 +640,8 @@ private fun MomentPostCard(
                 )
                 Text(
                     "批量",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.primaryVariant,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable(onClick = onAiBatchComment)
@@ -648,7 +653,7 @@ private fun MomentPostCard(
                 Spacer(Modifier.height(8.dp))
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    color = MiuixTheme.colorScheme.surfaceContainer,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
@@ -661,23 +666,23 @@ private fun MomentPostCard(
                                     .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.Top,
                             ) {
-                                Text(
-                                    buildString {
-                                        append(c.name)
-                                        if (c.isAi) append(" [AI]")
-                                        append("：")
-                                        append(c.content)
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
+                                    Text(
+                                        buildString {
+                                            append(c.name)
+                                            if (c.isAi) append(" [AI]")
+                                            append("：")
+                                            append(c.content)
+                                        },
+                                        fontSize = 13.sp,
+                                        color = MiuixTheme.colorScheme.onSurface,
+                                    )
                             }
                         }
                         if (post.comments.size > 4) {
                             Text(
                                 if (commentsExpanded) "收起" else "展开全部${post.comments.size}条评论",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 13.sp,
+                                color = MiuixTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -768,7 +773,7 @@ private fun CommentInputBar(
 ) {
     var text by remember(replyTo) { mutableStateOf(if (replyTo != null) "@$replyTo " else "") }
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = MiuixTheme.colorScheme.surfaceContainer,
         shadowElevation = 8.dp,
         modifier = modifier.fillMaxWidth(),
     ) {
@@ -779,31 +784,42 @@ private fun CommentInputBar(
             TextField(
                 value = text,
                 onValueChange = { text = it },
-                placeholder = { Text("评论…", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                shape = RoundedCornerShape(22.dp),
+                label = "评论…",
+                useLabelAsPlaceholder = true,
+                cornerRadius = 22.dp,
                 maxLines = 3,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                ),
                 modifier = Modifier.weight(1f),
+                insideMargin = DpSize(16.dp, 12.dp),
             )
             Spacer(Modifier.width(8.dp))
-            androidx.compose.material3.FilledIconButton(
+            IconButton(
                 onClick = { if (text.isNotBlank()) onSend(text.trim()) },
                 enabled = text.isNotBlank(),
-                colors = androidx.compose.material3.IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
+                modifier = Modifier.size(44.dp),
+                backgroundColor = if (text.isNotBlank()) {
+                    MiuixTheme.colorScheme.primary
+                } else {
+                    MiuixTheme.colorScheme.surfaceContainerHigh
+                },
             ) {
-                Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "发送")
+                Icon(
+                    Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = "发送",
+                    modifier = Modifier.size(20.dp),
+                    tint = if (text.isNotBlank()) {
+                        MiuixTheme.colorScheme.onPrimary
+                    } else {
+                        MiuixTheme.colorScheme.onSurfaceContainerVariant
+                    },
+                )
             }
             Spacer(Modifier.width(4.dp))
             IconButton(onClick = onCancel) {
-                Icon(Icons.Rounded.Close, contentDescription = "取消", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = "取消",
+                    tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                )
             }
         }
     }
@@ -821,7 +837,6 @@ private fun decodeSampledFile(path: String, target: Int): Bitmap? {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ComposeMomentScreen(
     appVm: AppViewModel,
@@ -861,67 +876,61 @@ fun ComposeMomentScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        androidx.compose.material3.TopAppBar(
-            colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
-                }
-            },
-            title = { Text("发布动态", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            actions = {
-                androidx.compose.material3.TextButton(
-                    onClick = {
-                        if (content.isBlank() && uploadedUrls.isEmpty()) {
-                            appVm.showToast("请输入内容")
-                            return@TextButton
-                        }
-                        publishing = true
-                        val body = JSONObject().apply {
-                            put("content", content.trim())
-                            put("images", JSONArray().apply { uploadedUrls.forEach { put(it) } })
-                        }
-                        ApiGateway.post("/api/moments", body.toString(), AppSession.token(), object : ApiGateway.Callback {
-                            override fun onSuccess(response: String) {
-                                appVm.showToast("发布成功")
-                                publishing = false
-                                onPosted()
+    Scaffold(
+        containerColor = MiuixTheme.colorScheme.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "发布动态",
+                color = MiuixTheme.colorScheme.surface,
+                navigationIcon = { BackButton(onBack) },
+                actions = {
+                    TextButton(
+                        text = "发布",
+                        onClick = {
+                            if (content.isBlank() && uploadedUrls.isEmpty()) {
+                                appVm.showToast("请输入内容")
+                                return@TextButton
                             }
-
-                            override fun onError(error: String?) {
-                                appVm.showToast("发布失败: ${error ?: ""}")
-                                publishing = false
+                            publishing = true
+                            val body = JSONObject().apply {
+                                put("content", content.trim())
+                                put("images", JSONArray().apply { uploadedUrls.forEach { put(it) } })
                             }
-                        })
-                    },
-                    enabled = !publishing,
-                ) {
-                    Text("发布", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                }
-            },
-        )
+                            ApiGateway.post("/api/moments", body.toString(), AppSession.token(), object : ApiGateway.Callback {
+                                override fun onSuccess(response: String) {
+                                    appVm.showToast("发布成功")
+                                    publishing = false
+                                    onPosted()
+                                }
 
+                                override fun onError(error: String?) {
+                                    appVm.showToast("发布失败: ${error ?: ""}")
+                                    publishing = false
+                                }
+                            })
+                        },
+                        enabled = !publishing,
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        minHeight = 36.dp,
+                    )
+                },
+            )
+        },
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(padding)
                 .imePadding()
                 .padding(horizontal = 16.dp),
         ) {
             TextField(
                 value = content,
                 onValueChange = { content = it },
-                placeholder = { Text("这一刻的想法…", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                label = "这一刻的想法…",
+                useLabelAsPlaceholder = true,
                 minLines = 6,
-                shape = RoundedCornerShape(16.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 10.dp),
@@ -965,7 +974,7 @@ fun ComposeMomentScreen(
 
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = MiuixTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier
                     .clickable { imagePick.launch("image/*") }
                     .padding(vertical = 6.dp),
@@ -977,10 +986,10 @@ fun ComposeMomentScreen(
                     Icon(
                         Icons.Outlined.Image,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MiuixTheme.colorScheme.primary,
                     )
                     Spacer(Modifier.width(10.dp))
-                    Text("添加图片", style = MaterialTheme.typography.bodyMedium)
+                    Text("添加图片", fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurface)
                 }
             }
         }

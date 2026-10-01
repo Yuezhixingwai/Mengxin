@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,12 +39,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Add
@@ -70,23 +71,6 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Tab
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -123,6 +107,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun ContactsScreen(
@@ -138,25 +136,14 @@ fun ContactsScreen(
     var deleteFor by remember { mutableStateOf<FriendManager.Friend?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        ScrollableTabRow(
+        TabRow(
+            tabs = listOf("好友", "群聊"),
             selectedTabIndex = tab,
-            edgePadding = 24.dp,
-            containerColor = Color.Transparent,
-            divider = {},
-        ) {
-            listOf("好友", "群聊").forEachIndexed { index, label ->
-                Tab(
-                    selected = tab == index,
-                    onClick = { tab = index },
-                    text = {
-                        Text(
-                            label,
-                            fontWeight = if (tab == index) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    },
-                )
-            }
-        }
+            onTabSelected = { tab = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        )
         AnimatedContent(
             targetState = tab,
             transitionSpec = {
@@ -255,7 +242,7 @@ private fun FriendListPage(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 96.dp + BottomNavBarHeight, end = 22.dp),
+                contentPadding = PaddingValues(bottom = 24.dp, end = 22.dp),
             ) {
                 item(key = "friend_search") {
                     ContactSearchBar(
@@ -266,48 +253,38 @@ private fun FriendListPage(
                 }
                 if (!searching) {
                     item(key = "friend_actions") {
-                            ContactAddRow(Icons.Rounded.PersonAddAlt, "添加朋友", Color(0xFF3E7EE8), onAddFriend)
-                            ContactAddRow(Icons.Rounded.Groups2, "创建群聊", Color(0xFF34B78F), onCreateGroup)
-                            Text(
-                                "好友 ${friends.size}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                            )
-                        }
+                        ContactAddRow(Icons.Rounded.PersonAddAlt, "添加朋友", MiuixTheme.colorScheme.primary, onAddFriend)
+                        ContactAddRow(Icons.Rounded.Groups2, "创建群聊", Color(0xFF34B78F), onCreateGroup)
+                        Text(
+                            "好友 ${friends.size}",
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onBackgroundVariant,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                        )
                     }
-                    if (filtered.isEmpty()) {
-                        item(key = "friend_empty") {
-                            EmptyHint(
-                                if (searching) "没有找到「${query.trim()}」相关好友"
-                                else "还没有好友，去添加一个伙伴吧"
-                            )
+                }
+                if (filtered.isEmpty()) {
+                    item(key = "friend_empty") {
+                        EmptyHint(
+                            if (searching) "没有找到「${query.trim()}」相关好友"
+                            else "还没有好友，去添加一个伙伴吧"
+                        )
+                    }
+                } else {
+                    sections.forEach { (letter, indices) ->
+                        stickyHeader(key = "friend_header_$letter") {
+                            SectionLetterHeader(letter)
                         }
-                    } else {
-                        sections.forEach { (letter, indices) ->
-                            stickyHeader(key = "friend_header_$letter") {
-                                SectionLetterHeader(letter)
-                            }
-                            itemsIndexed(indices, key = { _, i -> filtered[i].id }) { _, i ->
-                                val friend = filtered[i]
-                                val official = appVm.isOfficialPersona(friend.name)
-                                ListItem(
-                                    modifier = Modifier.combinedClickable(
-                                        onClick = { onOpen(friend) },
-                                        onLongClick = { onLongPress(friend) },
-                                    ),
-                                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                                    leadingContent = { PersonaAvatar(friend.id, friend.name, 46.dp) },
-                                    headlineContent = { Text(friend.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    supportingContent = {
-                                        Text(
-                                            if (official) "官方人设" else "点击开始聊天",
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                )
-                            }
+                        itemsIndexed(indices, key = { _, i -> filtered[i].id }) { _, i ->
+                            val friend = filtered[i]
+                            val official = appVm.isOfficialPersona(friend.name)
+                            ContactRow(
+                                title = friend.name,
+                                summary = if (official) "官方人设" else "点击开始聊天",
+                                avatar = { PersonaAvatar(friend.id, friend.name, 46.dp) },
+                                onClick = { onOpen(friend) },
+                                onLongClick = { onLongPress(friend) },
+                            )
                         }
                     }
                 }
@@ -341,6 +318,7 @@ private fun FriendListPage(
                     }
                 }
             }
+        }
     }
 }
 
@@ -387,7 +365,7 @@ private fun GroupListPage(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 96.dp + BottomNavBarHeight, end = 22.dp),
+                contentPadding = PaddingValues(bottom = 24.dp, end = 22.dp),
             ) {
                 item(key = "group_search") {
                     ContactSearchBar(
@@ -398,31 +376,29 @@ private fun GroupListPage(
                 }
                 if (!searching) {
                     item(key = "group_actions") {
-                            ContactAddRow(Icons.Rounded.Groups2, "创建群聊", Color(0xFF34B78F), onCreateGroup)
-                        }
+                        ContactAddRow(Icons.Rounded.Groups2, "创建群聊", Color(0xFF34B78F), onCreateGroup)
                     }
-                    if (filtered.isEmpty()) {
-                        item(key = "group_empty") {
-                            EmptyHint(
-                                if (searching) "没有找到「${query.trim()}」相关群聊"
-                                else "暂无群聊"
-                            )
+                }
+                if (filtered.isEmpty()) {
+                    item(key = "group_empty") {
+                        EmptyHint(
+                            if (searching) "没有找到「${query.trim()}」相关群聊"
+                            else "暂无群聊"
+                        )
+                    }
+                } else {
+                    sections.forEach { (letter, indices) ->
+                        stickyHeader(key = "group_header_$letter") {
+                            SectionLetterHeader(letter)
                         }
-                    } else {
-                        sections.forEach { (letter, indices) ->
-                            stickyHeader(key = "group_header_$letter") {
-                                SectionLetterHeader(letter)
-                            }
-                            itemsIndexed(indices, key = { _, i -> filtered[i][0] }) { _, i ->
-                                val group = filtered[i]
-                                ListItem(
-                                    modifier = Modifier.clickable { onOpen(group[1]) },
-                                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                                    leadingContent = { GroupAvatar(46.dp) },
-                                    headlineContent = { Text(group[1], maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    supportingContent = { Text("群聊") },
-                                )
-                            }
+                        itemsIndexed(indices, key = { _, i -> filtered[i][0] }) { _, i ->
+                            val group = filtered[i]
+                            ContactRow(
+                                title = group[1],
+                                summary = "群聊",
+                                avatar = { GroupAvatar(46.dp) },
+                                onClick = { onOpen(group[1]) },
+                            )
                         }
                     }
                 }
@@ -456,29 +432,72 @@ private fun GroupListPage(
                     }
                 }
             }
+        }
+    }
+}
+
+/** 通用列表行：头像 + 标题 + 摘要，miuix 配色。 */
+@Composable
+private fun ContactRow(
+    title: String,
+    summary: String,
+    avatar: @Composable () -> Unit,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 20.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        avatar()
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                color = colors.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                summary,
+                fontSize = 13.sp,
+                color = colors.onSurfaceVariantSummary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
 @Composable
 private fun ContactAddRow(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        leadingContent = {
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .background(tint.copy(alpha = 0.14f), RoundedCornerShape(13.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
-            }
-        },
-        headlineContent = { Text(label) },
-    )
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .background(tint.copy(alpha = 0.14f), RoundedCornerShape(13.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Text(label, color = colors.onBackground)
+    }
     HorizontalDivider(
-        modifier = Modifier.padding(start = 82.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+        modifier = Modifier.padding(start = 80.dp),
         thickness = 0.5.dp,
     )
 }
@@ -491,7 +510,7 @@ internal fun EmptyHint(text: String) {
             .padding(vertical = 48.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
     }
 }
 
@@ -509,6 +528,7 @@ fun MeScreen(
     onOpenPersonaDetail: (Int) -> Unit = {},
     onOpenCreatePersona: () -> Unit = {},
 ) {
+    val colors = MiuixTheme.colorScheme
     val userInfo = appVm.userInfo
     var coinBalance by remember { mutableStateOf<Double?>(null) }
     var coinToday by remember { mutableStateOf("") }
@@ -556,15 +576,15 @@ fun MeScreen(
                         userInfo?.nickname?.takeIf { it.isNotEmpty() }
                             ?: userInfo?.username?.takeIf { it.isNotEmpty() }
                             ?: "未设置昵称",
-                        style = MaterialTheme.typography.titleLarge,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.onSurface,
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "灵心号 ${com.zhiyin.data.AppSession.userId()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        color = colors.onSurfaceVariantSummary,
                     )
                     Spacer(Modifier.height(8.dp))
                     Row {
@@ -577,7 +597,7 @@ fun MeScreen(
                     Icon(
                         Icons.Rounded.Settings,
                         contentDescription = "设置",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = colors.onSurfaceVariantSummary,
                     )
                 }
             }
@@ -593,8 +613,8 @@ fun MeScreen(
                 Column {
                     Text(
                         "灵心币余额",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        color = colors.onSurfaceVariantSummary,
                     )
                     Spacer(Modifier.height(2.dp))
                     AnimatedContent(
@@ -607,9 +627,9 @@ fun MeScreen(
                     ) { balance ->
                         Text(
                             balance?.let { "$" + fmtCoinDisplay(it) } ?: "…",
-                            style = MaterialTheme.typography.titleLarge,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = colors.onSurface,
                         )
                     }
                     AnimatedVisibility(
@@ -620,15 +640,15 @@ fun MeScreen(
                     ) {
                         Text(
                             coinToday,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            color = colors.onSurfaceVariantSummary,
                         )
                     }
                 }
                 Spacer(Modifier.weight(1f))
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                    color = colors.primaryContainer,
                     modifier = Modifier.clickable(onClick = onOpenRecharge),
                 ) {
                     Row(
@@ -638,15 +658,15 @@ fun MeScreen(
                         Icon(
                             Icons.Rounded.Add,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            tint = colors.onPrimaryContainer,
                             modifier = Modifier.size(15.dp),
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
                             "充值",
-                            style = MaterialTheme.typography.labelLarge,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = colors.onPrimaryContainer,
                         )
                     }
                 }
@@ -658,7 +678,7 @@ fun MeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 6.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(20.dp))
+                    .background(colors.surfaceContainer, RoundedCornerShape(20.dp))
                     .clickable(onClick = onOpenSubscription)
                     .padding(horizontal = 18.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -666,25 +686,26 @@ fun MeScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "灵心会员",
-                        style = MaterialTheme.typography.titleSmall,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
                     )
                     Text(
                         "订阅解锁无限畅聊与全部 AI 人设",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        color = colors.onSurfaceVariantSummary,
                     )
                 }
                 Text(
                     "立即开通",
-                    style = MaterialTheme.typography.labelLarge,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = colors.primary,
                 )
                 Icon(
                     Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = colors.onSurfaceVariantSummary,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -715,8 +736,8 @@ fun MeScreen(
         StaggeredAppear(delay = 240) {
             Text(
                 "内容为AI生成，请注意甄别",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                color = colors.onBackgroundVariant,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 20.dp)
@@ -724,7 +745,7 @@ fun MeScreen(
             )
         }
 
-        Spacer(Modifier.height(BottomNavBarHeight + 24.dp))
+        Spacer(Modifier.height(24.dp))
     }
     }
 }
@@ -733,24 +754,27 @@ private fun fmtCoinDisplay(v: Double): String =
     if (v == Math.floor(v) && !v.isInfinite()) v.toLong().toString() else String.format("%.2f", v)
 
 @Composable
-private fun StatText(label: String, value: String) {    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun StatText(label: String, value: String) {
+    val colors = MiuixTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             value,
-            style = MaterialTheme.typography.titleMedium,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.onSurface,
         )
         Spacer(Modifier.width(4.dp))
         Text(
             label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+            color = colors.onSurfaceVariantSummary,
         )
     }
 }
 
 @Composable
 private fun QuickAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -760,14 +784,14 @@ private fun QuickAction(icon: ImageVector, label: String, onClick: () -> Unit) {
         Icon(
             icon,
             contentDescription = label,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = colors.primary,
             modifier = Modifier.size(26.dp),
         )
         Spacer(Modifier.height(6.dp))
         Text(
             label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 12.sp,
+            color = colors.onSurface,
         )
     }
 }
@@ -780,6 +804,7 @@ private fun MyPublishedPersonasSection(
     onCreate: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val colors = MiuixTheme.colorScheme
     var myList by remember { mutableStateOf<List<com.zhiyin.data.PersonaLight>>(emptyList()) }
     var deleteTarget by remember { mutableStateOf<com.zhiyin.data.PersonaLight?>(null) }
 
@@ -797,20 +822,21 @@ private fun MyPublishedPersonasSection(
         ) {
             Text(
                 "我发布的人设",
-                style = MaterialTheme.typography.titleMedium,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
+                color = colors.onBackground,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 "${myList.size} 个",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                color = colors.onSurfaceVariantSummary,
             )
             Spacer(Modifier.width(10.dp))
             Text(
                 "+ 发布",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
+                fontSize = 12.sp,
+                color = colors.primary,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clickable(onClick = onCreate).padding(4.dp),
             )
@@ -818,8 +844,8 @@ private fun MyPublishedPersonasSection(
         if (myList.isEmpty()) {
             Text(
                 "还没有发布过人设，点右上角发布创建",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                color = colors.onSurfaceVariantSummary,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
         } else {
@@ -834,7 +860,7 @@ private fun MyPublishedPersonasSection(
                         )
                         Surface(
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            color = colors.surface.copy(alpha = 0.92f),
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(top = 6.dp, end = 16.dp)
@@ -843,7 +869,7 @@ private fun MyPublishedPersonasSection(
                             Icon(
                                 Icons.Rounded.Delete,
                                 contentDescription = "删除人设",
-                                tint = MaterialTheme.colorScheme.error,
+                                tint = colors.error,
                                 modifier = Modifier.padding(6.dp).size(16.dp),
                             )
                         }
@@ -873,7 +899,6 @@ private fun MyPublishedPersonasSection(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     appVm: AppViewModel,
@@ -896,248 +921,221 @@ fun SettingsScreen(
     val themeId by appVm.themeId.collectAsState()
     var showLogout by remember { mutableStateOf(false) }
     var showThemePicker by remember { mutableStateOf(false) }
+    val colors = MiuixTheme.colorScheme
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-            title = {
-                Text("设置", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
-                }
-            },
-        )
-
-        RubberBandBox(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-        ) {
-            ListItem(
-                modifier = Modifier.clickable(onClick = onOpenProfile),
-                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                leadingContent = {
-                    UserAvatar(avatarUrl = appVm.userInfo?.avatar, size = 52.dp)
-                },
-                headlineContent = {
-                    Text(
-                        appVm.userInfo?.nickname?.takeIf { it.isNotEmpty() } ?: "未设置昵称",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                },
-                supportingContent = { Text("查看 / 编辑个人资料") },
-                trailingContent = {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            TopAppBar(
+                title = "设置",
+                color = colors.surface,
+                navigationIcon = { BackButton(onClick = onBack) },
             )
-
-            Spacer(Modifier.height(8.dp))
-
-            CardContainer {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { appVm.toggleDark() }
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Rounded.DarkMode,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(22.dp),
+        },
+    ) { padding ->
+        RubberBandBox(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                CardContainer {
+                    ArrowPreference(
+                        title = appVm.userInfo?.nickname?.takeIf { it.isNotEmpty() } ?: "未设置昵称",
+                        summary = "查看 / 编辑个人资料",
+                        startAction = { UserAvatar(avatarUrl = appVm.userInfo?.avatar, size = 46.dp) },
+                        onClick = onOpenProfile,
                     )
-                    Spacer(Modifier.width(14.dp))
-                    Text("深色模式", modifier = Modifier.weight(1f))
-                    Switch(
+                }
+
+                CardContainer {
+                    SwitchPreference(
+                        title = "深色模式",
+                        startAction = { MenuIcon(Icons.Rounded.DarkMode) },
                         checked = darkTheme,
                         onCheckedChange = { appVm.toggleDark() },
-                        colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary),
                     )
                 }
-            }
 
-            CardContainer {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { appVm.toggleNotify(!notifyEnabled) }
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Rounded.Notifications,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(22.dp),
-                    )
-                    Spacer(Modifier.width(14.dp))
-                    Text("新消息通知", modifier = Modifier.weight(1f))
-                    Switch(
+                CardContainer {
+                    SwitchPreference(
+                        title = "新消息通知",
+                        startAction = { MenuIcon(Icons.Rounded.Notifications) },
                         checked = notifyEnabled,
                         onCheckedChange = { appVm.toggleNotify(it) },
-                        colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary),
                     )
                 }
-            }
 
-            CardContainer {
-                Column {
+                CardContainer {
                     MenuRow(Icons.Rounded.Palette, "个性装扮", onClick = { showThemePicker = true })
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    RowDivider()
                     MenuRow(Icons.Rounded.Wallpaper, "全局背景", onClick = onOpenGlobalBackground)
                 }
-            }
 
-            CardContainer {
-                Column {
+                CardContainer {
                     MenuRow(Icons.Rounded.Favorite, "喜好设置", onClick = onOpenPreferences)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    RowDivider()
                     MenuRow(Icons.Rounded.EmojiEmotions, "表情包商城", onClick = onOpenStickerShop)
                 }
-            }
 
-            CardContainer {
-                Column {
+                CardContainer {
                     MenuRow(Icons.Rounded.Security, "账号与安全", onClick = onOpenAccountSecurity)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    RowDivider()
                     MenuRow(Icons.Rounded.Link, "微信 / 外部绑定", onClick = onOpenBindings)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    RowDivider()
                     MenuRow(Icons.Rounded.PrivacyTip, "隐私保护", onClick = onOpenPrivacy)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    RowDivider()
                     MenuRow(Icons.Rounded.Tune, "模型与额度", onClick = onOpenQuota)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    RowDivider()
                     MenuRow(Icons.Rounded.TravelExplore, "联网搜索", onClick = onOpenSearchSettings)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    RowDivider()
                     MenuRow(Icons.Rounded.Campaign, "系统公告", onClick = onOpenAnnouncements)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    RowDivider()
                     MenuRow(Icons.Rounded.Feedback, "帮助与反馈", onClick = onOpenFeedback)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    RowDivider()
                     MenuRow(Icons.Rounded.Info, "关于灵心", onClick = onOpenAbout)
                 }
-            }
 
-            CardContainer {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showLogout = true }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "退出登录",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(32.dp))
-        }
-        }
-    }
-
-    if (showLogout) {
-        LingXinDialog(
-            onDismiss = { showLogout = false },
-            title = "退出登录",
-            text = "确定要退出登录吗？",
-            confirmText = "退出",
-            danger = true,
-            onConfirm = {
-                showLogout = false
-                appVm.logout()
-            },
-        )
-    }
-
-    if (showThemePicker) {
-        LingXinSheet(onDismiss = { showThemePicker = false }) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Text(
-                    "个性装扮 · 主题色",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(vertical = 10.dp),
-                )
-                com.zhiyin.ui.theme.BrandThemes.all.forEach { brand ->
-                    val selected = brand.id == themeId
-                    Row(
+                CardContainer {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                appVm.setTheme(brand.id)
-                                appVm.showToast("已切换到「${brand.label}」")
-                            }
-                            .padding(horizontal = 8.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .clickable { showLogout = true }
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .background(brand.preview, androidx.compose.foundation.shape.CircleShape),
-                        )
-                        Spacer(Modifier.width(14.dp))
                         Text(
-                            brand.label,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            "退出登录",
+                            color = colors.error,
+                            fontSize = 16.sp,
+                            modifier = Modifier.padding(vertical = 8.dp),
                         )
-                        if (selected) {
-                            Icon(
-                                Icons.Rounded.Check,
-                                contentDescription = "当前主题",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
                     }
                 }
-                Spacer(Modifier.height(20.dp))
+
+                Spacer(Modifier.height(32.dp))
             }
+        }
+    }
+
+    LingXinDialog(
+        show = showLogout,
+        onDismiss = { showLogout = false },
+        title = "退出登录",
+        text = "确定要退出登录吗？",
+        confirmText = "退出",
+        danger = true,
+        onConfirm = {
+            showLogout = false
+            appVm.logout()
+        },
+    )
+
+    LingXinSheet(
+        show = showThemePicker,
+        onDismiss = { showThemePicker = false },
+        title = "个性装扮 · 主题色",
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            ThemeOptionRow(
+                label = "默认 · miuix 蓝",
+                preview = Color(0xFF3482FF),
+                selected = themeId.isEmpty(),
+                onClick = {
+                    appVm.setTheme("")
+                    appVm.showToast("已切换到「miuix 默认」")
+                },
+            )
+            com.zhiyin.ui.theme.BrandThemes.all.forEach { brand ->
+                ThemeOptionRow(
+                    label = brand.label,
+                    preview = brand.seedColor,
+                    selected = brand.id == themeId,
+                    onClick = {
+                        appVm.setTheme(brand.id)
+                        appVm.showToast("已切换到「${brand.label}」")
+                    },
+                )
+            }
+            Spacer(Modifier.height(20.dp))
         }
     }
 }
 
 @Composable
-internal fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        leadingContent = {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
-        },
-        headlineContent = { Text(label) },
-        trailingContent = {
+private fun ThemeOptionRow(
+    label: String,
+    preview: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .background(preview, CircleShape),
+        )
+        Spacer(Modifier.width(14.dp))
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            fontSize = 16.sp,
+            color = if (selected) colors.primary else colors.onSurface,
+        )
+        if (selected) {
             Icon(
-                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                Icons.Rounded.Check,
+                contentDescription = "当前主题",
+                tint = colors.primary,
+                modifier = Modifier.size(20.dp),
             )
-        },
+        }
+    }
+}
+
+@Composable
+internal fun MenuIcon(icon: ImageVector) {
+    Icon(
+        icon,
+        contentDescription = null,
+        tint = MiuixTheme.colorScheme.onBackground,
+        modifier = Modifier.size(22.dp),
     )
 }
 
 @Composable
-internal fun CardContainer(content: @Composable () -> Unit) {
-    Surface(
+internal fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+    ArrowPreference(
+        title = label,
+        startAction = { MenuIcon(icon) },
+        onClick = onClick,
+    )
+}
+
+@Composable
+internal fun RowDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 46.dp),
+        thickness = 0.5.dp,
+    )
+}
+
+@Composable
+internal fun CardContainer(content: @Composable ColumnScope.() -> Unit) {
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        insideMargin = PaddingValues(0.dp),
+        colors = CardDefaults.defaultColors(),
     ) {
         content()
     }
@@ -1161,24 +1159,26 @@ internal fun StaggeredAppear(delay: Int = 0, content: @Composable () -> Unit) {
 
 @Composable
 internal fun SheetActionRow(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        leadingContent = {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp),
-            )
-        },
-        headlineContent = {
-            Text(
-                label,
-                color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            )
-        },
-    )
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (danger) colors.error else colors.primary,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        Text(
+            label,
+            color = if (danger) colors.error else colors.onSurface,
+        )
+    }
 }
 
 @Composable
@@ -1187,36 +1187,32 @@ private fun ContactSearchBar(
     onValueChange: (String) -> Unit,
     placeholder: String,
 ) {
+    val colors = MiuixTheme.colorScheme
     TextField(
         value = value,
         onValueChange = onValueChange,
-        placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        label = placeholder,
+        useLabelAsPlaceholder = true,
         singleLine = true,
-        shape = RoundedCornerShape(24.dp),
         leadingIcon = {
             Icon(
                 Icons.Rounded.Search,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = colors.onSurfaceVariantSummary,
+                modifier = Modifier.padding(start = 10.dp),
             )
         },
-        trailingIcon = {
-            if (value.isNotEmpty()) {
+        trailingIcon = if (value.isNotEmpty()) {
+            {
                 IconButton(onClick = { onValueChange("") }) {
                     Icon(
                         Icons.Rounded.Close,
                         contentDescription = "清空",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = colors.onSurfaceVariantSummary,
                     )
                 }
             }
-        },
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-        ),
+        } else null,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1225,14 +1221,15 @@ private fun ContactSearchBar(
 
 @Composable
 private fun SectionLetterHeader(letter: String) {
+    val colors = MiuixTheme.colorScheme
     Text(
         letter,
-        style = MaterialTheme.typography.labelMedium,
+        fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
+        color = colors.primary,
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(colors.surface)
             .padding(horizontal = 24.dp, vertical = 4.dp),
     )
 }
@@ -1245,6 +1242,7 @@ private fun AlphabetSidebar(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = MiuixTheme.colorScheme
     var barHeightPx by remember { mutableIntStateOf(0) }
     Box(
         modifier = modifier
@@ -1283,8 +1281,8 @@ private fun AlphabetSidebar(
                     letter,
                     fontSize = 10.sp,
                     fontWeight = if (letter == activeLetter) FontWeight.Bold else FontWeight.Medium,
-                    color = if (letter == activeLetter) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (letter == activeLetter) colors.primary
+                    else colors.onSurfaceVariantSummary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .width(24.dp)

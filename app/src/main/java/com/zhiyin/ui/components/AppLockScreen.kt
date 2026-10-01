@@ -21,10 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Backspace
 import androidx.compose.material.icons.rounded.Fingerprint
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,9 +35,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.R
 import com.zhiyin.data.PrivacyManager
 import kotlinx.coroutines.delay
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private fun Modifier.noRippleClickable(onClick: () -> Unit): Modifier = this.then(
     Modifier.clickable(
@@ -117,10 +118,11 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
         }
     }
 
+    val colors = MiuixTheme.colorScheme
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(colors.surface)
             .statusBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -133,12 +135,12 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
                 .clip(RoundedCornerShape(18.dp)),
         )
         Spacer(Modifier.height(14.dp))
-        Text("应用已锁定", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("应用已锁定", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
         Spacer(Modifier.height(6.dp))
         Text(
             if (hasError) errorMsg else "输入数字密码解锁",
-            style = MaterialTheme.typography.bodySmall,
-            color = if (hasError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+            color = if (hasError) colors.error else colors.onSurfaceVariantSummary,
         )
         Spacer(Modifier.height(22.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -147,8 +149,8 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
                     modifier = Modifier
                         .size(12.dp)
                         .background(
-                            if (i < pin.length) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outlineVariant,
+                            if (i < pin.length) colors.primary
+                            else colors.dividerLine,
                             CircleShape,
                         ),
                 )
@@ -176,20 +178,21 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
                             Icon(
                                 Icons.Rounded.Backspace,
                                 contentDescription = "删除",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = colors.onSurfaceVariantSummary,
                             )
                         }
                         else -> Surface(
                             onClick = { append(key) },
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            color = colors.surfaceContainerHigh,
                             modifier = Modifier.size(68.dp),
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
                                     key,
-                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontSize = 24.sp,
                                     fontWeight = FontWeight.SemiBold,
+                                    color = colors.onSurface,
                                 )
                             }
                         }
@@ -215,14 +218,14 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
                 Icon(
                     Icons.Rounded.Fingerprint,
                     contentDescription = "生物识别解锁",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = colors.primary,
                     modifier = Modifier.size(34.dp),
                 )
             }
             Text(
                 "生物识别解锁",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                color = colors.onSurfaceVariantSummary,
             )
         }
     }

@@ -9,7 +9,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -26,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 object RemoteImageCache {
     private const val MAX_MEMORY_ENTRIES = 24
@@ -127,7 +127,7 @@ fun RemoteImage(
                 )
             } else {
                 if (placeholder != null) placeholder()
-                else Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh))
+                else Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surfaceContainerHigh))
             }
         }
     }

@@ -15,12 +15,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -73,7 +72,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -87,15 +85,18 @@ class MainActivity : ComponentActivity() {
         applySecureFlag()
 
         setContent {
-            CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
-                val appVm: AppViewModel = viewModel()
-                val darkTheme by appVm.darkMode.collectAsState()
-                val loggedIn by appVm.loggedIn.collectAsState()
-                val themeId by appVm.themeId.collectAsState()
+            val appVm: AppViewModel = viewModel()
+            val darkTheme by appVm.darkMode.collectAsState()
+            val loggedIn by appVm.loggedIn.collectAsState()
+            val themeId by appVm.themeId.collectAsState()
 
-                LaunchedEffect(PrivacyManager.secureFlagOn) { applySecureFlag() }
+            LaunchedEffect(PrivacyManager.secureFlagOn) { applySecureFlag() }
 
-                LingXinTheme(darkTheme = darkTheme, themeId = themeId) {
+            LingXinTheme(darkTheme = darkTheme, themeId = themeId) {
+                top.yukonga.miuix.kmp.basic.Scaffold(
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    contentWindowInsets = WindowInsets(0.dp),
+                ) { _ ->
                     if (appLocked.value) {
                         AppLockScreen(onUnlocked = {
                             appLocked.value = false
@@ -184,16 +185,13 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        // 实名闸门（2026-09-24）：服务端任一接口返回 need_real_name=true 就立刻弹实名窗。
-                        // 修复的漏洞：原先只在进主界面时拉一次 /api/auth/real-name-required，
-                        // 拉取失败（超时/换网络）会被静默吞掉且不再重试 → 用户可永久免实名使用。
                         var needRealName by remember { mutableStateOf(false) }
                         DisposableEffect(Unit) {
                             val listener = ApiGateway.RealNameListener { needRealName = true }
                             ApiGateway.addRealNameListener(listener)
                             onDispose { ApiGateway.removeRealNameListener(listener) }
                         }
-                        // 与上面 realNameState.required 的弹窗互斥，避免叠两层
+
                         if (needRealName && realNameState?.required != true) {
                             RealNameVerifyDialog(
                                 onVerified = {

@@ -5,13 +5,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 object SettingsRepo {
-
-    private val _themeId = MutableStateFlow("azure")
+    private val _themeId = MutableStateFlow("")
     val themeId: StateFlow<String> = _themeId
 
     fun loadThemeId(ctx: Context) {
         _themeId.value = ctx.getSharedPreferences("zhiyin", Context.MODE_PRIVATE)
-            .getString("theme_id", "azure") ?: "azure"
+            .getString("theme_id", "") ?: ""
     }
 
     fun setThemeId(ctx: Context, id: String) {

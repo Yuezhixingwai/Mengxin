@@ -13,27 +13,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,10 +40,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zhiyin.data.AvatarStore
 import com.zhiyin.logic.net.ApiGateway
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.vm.AppViewModel
 import java.util.UUID
@@ -59,6 +51,11 @@ import kotlin.concurrent.thread
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private data class AvatarOption(
     val seed: String,
@@ -85,7 +82,6 @@ private fun randomOption(): AvatarOption = AvatarOption(
     bg = PASTEL_BG.random(),
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArtAvatarScreen(
     appVm: AppViewModel,
@@ -93,32 +89,36 @@ fun ArtAvatarScreen(
     contactId: Int = -1,
     contactName: String? = null,
 ) {
+    val colors = MiuixTheme.colorScheme
     val context = LocalContext.current
     var options by remember { mutableStateOf(List(30) { randomOption() }) }
     var pickFor by remember { mutableStateOf<AvatarOption?>(null) }
     var uploading by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface),
-    ) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("艺术插画头像", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-            actions = {
-                IconButton(onClick = { options = List(30) { randomOption() } }) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = "换一批")
-                }
-            },
-        )
-
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "艺术插画头像",
+                color = colors.surface,
+                navigationIcon = { BackButton(onBack) },
+                actions = {
+                    IconButton(onClick = { options = List(30) { randomOption() } }) {
+                        Icon(
+                            Icons.Rounded.Refresh,
+                            contentDescription = "换一批",
+                            tint = colors.onSurface,
+                        )
+                    }
+                },
+            )
+        },
+    ) { padding ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -223,7 +223,7 @@ private fun ArtFadeImage(
     var visible by remember(url) { mutableStateOf(false) }
     LaunchedEffect(bmp) { if (bmp != null) visible = true }
     Box(
-        modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        modifier = modifier.background(MiuixTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
     ) {
         val img = bmp

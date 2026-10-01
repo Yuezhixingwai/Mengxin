@@ -302,11 +302,7 @@ object AccountApi {
             Result.failure(Exception(extractError(e)))
         }
     }
-
-    // ===== 每日签到（送灵心币）=====
     data class CheckinState(val checkedIn: Boolean, val reward: Int, val coins: Double, val message: String)
-
-    /** 查询今日是否已签到（只读，用于按钮状态） */
     suspend fun checkinStatus(): Result<CheckinState> = withContext(Dispatchers.IO) {
         try {
             val ctx = com.zhiyin.logic.AppHolder.app()!!
@@ -326,8 +322,6 @@ object AccountApi {
             Result.failure(Exception(extractError(e)))
         }
     }
-
-    /** 执行签到（同一自然日重复调用不会重复发币，服务端原子判定） */
     suspend fun checkin(): Result<CheckinState> = withContext(Dispatchers.IO) {
         try {
             val ctx = com.zhiyin.logic.AppHolder.app()!!
@@ -347,11 +341,7 @@ object AccountApi {
             Result.failure(Exception(extractError(e)))
         }
     }
-
-    // ===== 灵心币 ↔ 钱包余额 兑换 =====
     data class ExchangeResult(val coinBalance: Double, val balance: Double, val message: String)
-
-    /** direction: coin2cash（1 灵心币→800 余额）/ cash2coin（1000 余额→1 灵心币） */
     suspend fun exchange(direction: String, amount: Int): Result<ExchangeResult> = withContext(Dispatchers.IO) {
         try {
             val ctx = com.zhiyin.logic.AppHolder.app()!!

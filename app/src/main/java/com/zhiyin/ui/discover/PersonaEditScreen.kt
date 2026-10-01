@@ -1,4 +1,4 @@
-package com.zhiyin.ui.discover
+﻿package com.zhiyin.ui.discover
 
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,19 +25,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,16 +40,29 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.data.ImageUtils
 import com.zhiyin.data.PersonaDetail
 import com.zhiyin.data.PersonaLight
 import com.zhiyin.data.PlazaApi
 import com.zhiyin.data.PlazaAuthor
+import com.zhiyin.ui.BackButton
+import com.zhiyin.ui.DefaultAvatar
 import com.zhiyin.ui.chat.ContentCopy
 import com.zhiyin.ui.components.ImageCropperDialog
 import com.zhiyin.ui.components.RemoteImage
 import com.zhiyin.ui.vm.AppViewModel
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private class PendingImage(val bytes: ByteArray)
 
@@ -77,7 +78,7 @@ private data class EditForm(
     var isPublic: Boolean = true,
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun PersonaEditScreen(
     appVm: AppViewModel,
@@ -87,6 +88,7 @@ fun PersonaEditScreen(
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val colors = MiuixTheme.colorScheme
     var form by remember { mutableStateOf(EditForm()) }
     var categories by remember { mutableStateOf(listOf("人设女", "人设男", "情侣", "动漫", "游戏", "其他")) }
     var loading by remember { mutableStateOf(personaId != null) }
@@ -185,97 +187,106 @@ fun PersonaEditScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-            title = { Text(if (personaId == null) "创建人设" else "编辑人设", fontWeight = FontWeight.SemiBold) },
-            actions = {
-                TextButton(onClick = { save() }, enabled = !saving) {
-                    Text(if (saving) "保存中…" else "保存", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                }
-            },
-        )
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = if (personaId == null) "创建人设" else "编辑人设",
+                color = colors.surface,
+                navigationIcon = { BackButton(onClick = onBack) },
+                actions = {
+                    TextButton(
+                        text = if (saving) "保存中…" else "保存",
+                        onClick = { save() },
+                        enabled = !saving,
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        minHeight = 36.dp,
+                    )
+                },
+            )
+        },
+    ) { padding ->
         if (loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            return@Column
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@Scaffold
         }
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("人设图片（可选）", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text("人设图片（可选）", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ImageSlot("封面大图", coverPreview, "cover") { cropTarget = "cover"; imagePick.launch("image/*") }
                 ImageSlot("头像", avatarPreview, "avatar") { cropTarget = "avatar"; imagePick.launch("image/*") }
                 ImageSlot("背景图", bgPreview, "background") { cropTarget = "background"; imagePick.launch("image/*") }
             }
 
-            OutlinedTextField(
+            TextField(
                 value = form.name, onValueChange = { form = form.copy(name = it.take(20)) },
-                label = { Text("名称 *（卡片大字）") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                label = "名称 *（卡片大字）", useLabelAsPlaceholder = true, singleLine = true, modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedTextField(
+            TextField(
                 value = form.slogan, onValueChange = { form = form.copy(slogan = it.take(40)) },
-                label = { Text("标语（卡片小字，如：温柔会做饭的姐姐）") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                label = "标语（卡片小字，如：温柔会做饭的姐姐）", useLabelAsPlaceholder = true, singleLine = true, modifier = Modifier.fillMaxWidth(),
             )
 
-            Text("分类", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Row(
+            Text("分类", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
+            androidx.compose.foundation.layout.FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                categories.take(6).forEach { c ->
+                categories.forEach { c ->
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = if (form.category == c) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        color = if (form.category == c) colors.primary else colors.surfaceContainerHigh,
                         modifier = Modifier.clickable { form = form.copy(category = c) },
                     ) {
                         Text(
                             c,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (form.category == c) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                            fontSize = 12.sp,
+                            color = if (form.category == c) colors.onPrimary else colors.onSurface,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         )
                     }
                 }
             }
 
-            OutlinedTextField(
+            TextField(
                 value = form.keywords, onValueChange = { form = form.copy(keywords = it.take(100)) },
-                label = { Text("关键词（如：傲娇 温柔 学霸，用空格分隔）") }, modifier = Modifier.fillMaxWidth(),
+                label = "关键词（如：傲娇 温柔 学霸，用空格分隔）", useLabelAsPlaceholder = true, modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedTextField(
+            TextField(
                 value = form.light, onValueChange = { form = form.copy(light = it.take(2000)) },
-                label = { Text("简介 *（一句话介绍）") }, modifier = Modifier.fillMaxWidth(), minLines = 2,
+                label = "简介 *（一句话介绍）", useLabelAsPlaceholder = true, modifier = Modifier.fillMaxWidth(), minLines = 2,
             )
-            OutlinedTextField(
+            TextField(
                 value = form.full, onValueChange = { form = form.copy(full = it.take(60000)) },
-                label = { Text("完整人设（可选，会压缩上传）") }, modifier = Modifier.fillMaxWidth(), minLines = 5,
+                label = "完整人设（可选，会压缩上传）", useLabelAsPlaceholder = true, modifier = Modifier.fillMaxWidth(), minLines = 5,
             )
-            OutlinedTextField(
+            TextField(
                 value = form.pat, onValueChange = { form = form.copy(pat = it.take(100)) },
-                label = { Text("拍一拍文案（可选）") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                label = "拍一拍文案（可选）", useLabelAsPlaceholder = true, singleLine = true, modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedTextField(
+            TextField(
                 value = form.tags, onValueChange = { form = form.copy(tags = it.take(200)) },
-                label = { Text("标签（可选，用空格分隔）") }, modifier = Modifier.fillMaxWidth(),
+                label = "标签（可选，用空格分隔）", useLabelAsPlaceholder = true, modifier = Modifier.fillMaxWidth(),
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("公开人设", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("公开人设", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
                     Text(
                         if (form.isPublic) "公开后所有人可见，可被点赞/收藏/评论" else "仅自己可见，不出现在广场",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        color = colors.onSurfaceVariantSummary,
                     )
                 }
                 Switch(checked = form.isPublic, onCheckedChange = { form = form.copy(isPublic = it) })
@@ -309,12 +320,13 @@ private fun ImageSlot(
     tag: String,
     onClick: () -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(92.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(colors.surfaceContainerHigh)
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
@@ -331,14 +343,14 @@ private fun ImageSlot(
                     url = preview!!, contentDescription = label, modifier = Modifier.fillMaxSize(),
                 )
                 previewBmp != null -> Image(bitmap = previewBmp!!, contentDescription = label, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                else -> Text("＋", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> Text("＋", fontSize = 24.sp, color = colors.onSurfaceContainerVariant)
             }
         }
         Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
     }
 }
-@OptIn(ExperimentalMaterial3Api::class)
+
 @Composable
 fun AuthorScreen(
     appVm: AppViewModel,
@@ -347,6 +359,7 @@ fun AuthorScreen(
     onOpenDetail: (Int) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val colors = MiuixTheme.colorScheme
     var author by remember { mutableStateOf<PlazaAuthor?>(null) }
     var list by remember { mutableStateOf<List<PersonaLight>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -365,19 +378,23 @@ fun AuthorScreen(
 
     LaunchedEffect(authorId) { reload() }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-            title = { Text("作者主页", fontWeight = FontWeight.SemiBold) },
-        )
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "作者主页",
+                color = colors.surface,
+                navigationIcon = { BackButton(onClick = onBack) },
+            )
+        },
+    ) { padding ->
         if (loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            return@Column
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@Scaffold
         }
-        LazyColumn {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -389,20 +406,20 @@ fun AuthorScreen(
                     ) {
                         if (author?.avatar?.isNotEmpty() == true) {
                             RemoteImage(url = author!!.avatar, contentDescription = null, modifier = Modifier.fillMaxSize(), placeholder = {
-                                com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(64.dp), size = 64.dp, shape = CircleShape)
+                                DefaultAvatar(modifier = Modifier.size(64.dp), size = 64.dp, shape = CircleShape)
                             })
                         } else {
-                            com.zhiyin.ui.DefaultAvatar(modifier = Modifier.size(64.dp), size = 64.dp, shape = CircleShape)
+                            DefaultAvatar(modifier = Modifier.size(64.dp), size = 64.dp, shape = CircleShape)
                         }
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(author?.nickname ?: "作者", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("${author?.followers ?: 0} 粉丝 · ${list.size} 个人设", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(author?.nickname ?: "作者", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
+                        Text("${author?.followers ?: 0} 粉丝 · ${list.size} 个人设", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
                     }
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = if (author?.following == true) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+                        color = if (author?.following == true) colors.surfaceVariant else colors.primary,
                         modifier = Modifier.clickable {
                             followPersonaId?.let { pid ->
                                 scope.launch {
@@ -416,13 +433,13 @@ fun AuthorScreen(
                     ) {
                         Text(
                             if (author?.following == true) "已关注" else "+ 关注",
-                            color = if (author?.following == true) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary,
-                            style = MaterialTheme.typography.labelMedium,
+                            color = if (author?.following == true) colors.onSurfaceContainerVariant else colors.onPrimary,
+                            fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                         )
                     }
                 }
-                Text("TA 的人设", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                Text("TA 的人设", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onBackground, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             }
             val rows = list.chunked(2)
             items(rows, key = { r -> r.joinToString("-") { it.id.toString() } }) { row ->
@@ -436,7 +453,7 @@ fun AuthorScreen(
             if (list.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                        Text("TA 还没有公开人设", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("TA 还没有公开人设", color = colors.onSurfaceVariantSummary)
                     }
                 }
             }

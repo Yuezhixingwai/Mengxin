@@ -1,10 +1,10 @@
-package com.zhiyin.ui.discover
+﻿package com.zhiyin.ui.discover
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,24 +16,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Comment
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,10 +37,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.data.NotificationApi
 import com.zhiyin.data.NotifyItem
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.vm.AppViewModel
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private fun notifyIcon(type: String, tint: Color): Pair<ImageVector, Color> = when (type) {
     "like" -> Icons.Filled.Favorite to Color(0xFFEC4141)
@@ -62,7 +60,6 @@ private fun notifyIcon(type: String, tint: Color): Pair<ImageVector, Color> = wh
     else -> Icons.Filled.Notifications to tint
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageCenterScreen(
     appVm: AppViewModel,
@@ -70,6 +67,7 @@ fun MessageCenterScreen(
     onOpenPersona: (Int) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val colors = MiuixTheme.colorScheme
     var items by remember { mutableStateOf<List<NotifyItem>>(emptyList()) }
     var total by remember { mutableIntStateOf(0) }
     var page by remember { mutableIntStateOf(0) }
@@ -89,31 +87,38 @@ fun MessageCenterScreen(
 
     LaunchedEffect(Unit) { load(true) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-            title = { Text("消息中心", fontWeight = FontWeight.SemiBold) },
-            actions = {
-                TextButton(onClick = {
-                    scope.launch {
-                        NotificationApi.markRead(all = true).onSuccess {
-                            appVm.showToast("全部已读")
-                            load(true)
-                        }
-                    }
-                }) { Text("全部已读", color = MaterialTheme.colorScheme.primary) }
-            },
-        )
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "消息中心",
+                color = colors.surface,
+                navigationIcon = { BackButton(onClick = onBack) },
+                actions = {
+                    TextButton(
+                        text = "全部已读",
+                        onClick = {
+                            scope.launch {
+                                NotificationApi.markRead(all = true).onSuccess {
+                                    appVm.showToast("全部已读")
+                                    load(true)
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        insideMargin = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                },
+            )
+        },
+    ) { padding ->
         if (loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            return@Column
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@Scaffold
         }
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
             items(items, key = { it.id }) { n ->
-                val (icon, tint) = notifyIcon(n.type, MaterialTheme.colorScheme.primary)
+                val (icon, tint) = notifyIcon(n.type, colors.primary)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -137,8 +142,9 @@ fun MessageCenterScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 n.title,
-                                style = MaterialTheme.typography.titleSmall,
+                                fontSize = 15.sp,
                                 fontWeight = if (n.read) FontWeight.Normal else FontWeight.Bold,
+                                color = colors.onSurface,
                             )
                             if (!n.read) {
                                 Spacer(Modifier.width(6.dp))
@@ -149,15 +155,15 @@ fun MessageCenterScreen(
                         }
                         Text(
                             n.content,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            color = colors.onSurfaceVariantSummary,
                         )
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(
                         com.zhiyin.logic.net.ApiGateway.toBeijingTime(n.createdAt, "MM-dd HH:mm"),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        color = colors.onSurfaceVariantActions,
                     )
                 }
             }
@@ -167,7 +173,7 @@ fun MessageCenterScreen(
                         Modifier.fillMaxWidth().padding(16.dp).clickable { load(false) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("加载更多", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text("加载更多", fontSize = 12.sp, color = colors.primary)
                     }
                 }
             }
@@ -175,9 +181,9 @@ fun MessageCenterScreen(
                 item {
                     Box(Modifier.fillMaxWidth().padding(60.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Filled.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(44.dp))
+                            Icon(Icons.Filled.Notifications, contentDescription = null, tint = colors.surfaceVariant, modifier = Modifier.size(44.dp))
                             Spacer(Modifier.height(10.dp))
-                            Text("暂无消息", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("暂无消息", color = colors.onSurfaceVariantSummary)
                         }
                     }
                 }

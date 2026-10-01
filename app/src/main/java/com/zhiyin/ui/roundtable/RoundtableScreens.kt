@@ -1,4 +1,4 @@
-package com.zhiyin.ui.roundtable
+﻿package com.zhiyin.ui.roundtable
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -25,26 +25,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Summarize
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,10 +39,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhiyin.data.AppSession
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.net.ApiGateway
@@ -64,6 +50,7 @@ import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.LingXinMenuOverlay
 import com.zhiyin.ui.components.MenuItemSpec
 import com.zhiyin.ui.RubberBandBox
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.chat.MessageEntrance
 import com.zhiyin.ui.components.PersonaAvatar
 import com.zhiyin.ui.components.UserAvatar
@@ -75,6 +62,17 @@ import java.util.TimeZone
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 data class Meeting(
     val id: Int,
@@ -107,7 +105,6 @@ private fun parseMeetings(resp: String): List<Meeting> {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RoundtableScreen(
     appVm: AppViewModel,
@@ -129,36 +126,48 @@ fun RoundtableScreen(
     }
     LaunchedEffect(Unit) { load() }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("圆桌会议", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-            actions = {
-                IconButton(onClick = onCreate) {
-                    Icon(Icons.Rounded.Add, contentDescription = "创建会议")
-                }
-            },
-        )
-        if (meetings.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("还没有圆桌会议", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(12.dp))
-                    FilledTonalButton(onClick = onCreate, shape = RoundedCornerShape(50)) {
-                        Text("发起一场讨论")
+    Scaffold(
+        containerColor = MiuixTheme.colorScheme.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "圆桌会议",
+                color = MiuixTheme.colorScheme.surface,
+                navigationIcon = { BackButton(onBack) },
+                actions = {
+                    IconButton(onClick = onCreate) {
+                        Icon(Icons.Rounded.Add, contentDescription = "创建会议")
                     }
+                },
+            )
+        },
+    ) { padding ->
+        if (meetings.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "还没有圆桌会议",
+                        fontSize = 14.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(
+                        text = "发起一场讨论",
+                        onClick = onCreate,
+                        cornerRadius = 50.dp,
+                        insideMargin = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                    )
                 }
             }
         } else {
-            RubberBandBox(modifier = Modifier.fillMaxSize()) {
+            RubberBandBox(modifier = Modifier.fillMaxSize().padding(padding)) {
             LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                 items(meetings, key = { it.id }) { meeting ->
                     Surface(
                         shape = RoundedCornerShape(18.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        color = MiuixTheme.colorScheme.surfaceContainer,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 6.dp)
@@ -168,7 +177,7 @@ fun RoundtableScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     meeting.title,
-                                    style = MaterialTheme.typography.titleMedium,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.weight(1f),
                                     maxLines = 1,
@@ -176,16 +185,21 @@ fun RoundtableScreen(
                                 )
                                 Text(
                                     if (meeting.status == "active") "进行中" else "已结束",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (meeting.status == "active") Color(0xFF34B78F)
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    color = if (meeting.status == "active") MiuixTheme.colorScheme.primary
+                                    else MiuixTheme.colorScheme.onSurfaceContainerVariant,
                                 )
                                 if (meeting.status == "closed") {
-                                    IconButton(onClick = { deleteMeeting = meeting }, modifier = Modifier.size(28.dp)) {
+                                    IconButton(
+                                        onClick = { deleteMeeting = meeting },
+                                        modifier = Modifier.size(28.dp),
+                                        minWidth = 28.dp,
+                                        minHeight = 28.dp,
+                                    ) {
                                         Icon(
                                             Icons.Rounded.DeleteOutline,
                                             contentDescription = "删除",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                                             modifier = Modifier.size(16.dp),
                                         )
                                     }
@@ -195,8 +209,8 @@ fun RoundtableScreen(
                                 Spacer(Modifier.height(4.dp))
                                 Text(
                                     meeting.topic,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 13.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -204,8 +218,8 @@ fun RoundtableScreen(
                             Spacer(Modifier.height(6.dp))
                             Text(
                                 meeting.members.joinToString("、"),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.primary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -213,8 +227,8 @@ fun RoundtableScreen(
                                 Spacer(Modifier.height(6.dp))
                                 Text(
                                     it,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 13.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -251,10 +265,7 @@ fun RoundtableScreen(
     }
 }
 
-@OptIn(
-    ExperimentalMaterial3Api::class,
-    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
-)
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun CreateMeetingScreen(
     appVm: AppViewModel,
@@ -267,17 +278,20 @@ fun CreateMeetingScreen(
     var creating by remember { mutableStateOf(false) }
     val friends = appVm.friends
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            title = { Text("发起圆桌", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-        )
+    Scaffold(
+        containerColor = MiuixTheme.colorScheme.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "发起圆桌",
+                color = MiuixTheme.colorScheme.surface,
+                navigationIcon = { BackButton(onBack) },
+            )
+        },
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(padding)
                 .padding(horizontal = 16.dp),
         ) {
             OutlinedField(title, { title = it }, "会议标题")
@@ -285,12 +299,16 @@ fun CreateMeetingScreen(
             Spacer(Modifier.height(8.dp))
             Text(
                 "选择与会 AI（2-6 位，已选 ${selected.value.size}）",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
             )
             Spacer(Modifier.height(8.dp))
             if (friends.isEmpty()) {
-                Text("请先添加AI好友", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "请先添加AI好友",
+                    fontSize = 14.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                )
             }
             androidx.compose.foundation.layout.FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -299,23 +317,24 @@ fun CreateMeetingScreen(
             ) {
                 friends.forEach { f ->
                     val picked = f.name in selected.value
-                    FilledTonalButton(
+                    TextButton(
+                        text = f.name,
                         onClick = {
                             selected.value = if (picked) selected.value - f.name else selected.value + f.name
                         },
-                        shape = RoundedCornerShape(50),
-                        colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
-                            containerColor = if (picked) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = if (picked) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurface,
+                        cornerRadius = 50.dp,
+                        colors = if (picked) ButtonDefaults.textButtonColorsPrimary()
+                        else ButtonDefaults.textButtonColors(
+                            color = MiuixTheme.colorScheme.surfaceContainerHigh,
+                            textColor = MiuixTheme.colorScheme.onSurface,
                         ),
-                    ) {
-                        Text(f.name)
-                    }
+                        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        minWidth = 0.dp,
+                        minHeight = 36.dp,
+                    )
                 }
             }
-            androidx.compose.material3.Button(
+            Button(
                 onClick = {
                     val t = title.trim()
                     val tp = topic.trim()
@@ -353,7 +372,9 @@ fun CreateMeetingScreen(
                     })
                 },
                 enabled = !creating,
-                shape = RoundedCornerShape(50),
+                cornerRadius = 50.dp,
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 12.dp)
@@ -372,17 +393,13 @@ private fun OutlinedField(
     hint: String,
     minLines: Int = 1,
 ) {
-    androidx.compose.material3.OutlinedTextField(
+    TextField(
         value = value,
         onValueChange = onValueChange,
-        placeholder = { Text(hint) },
+        label = hint,
+        useLabelAsPlaceholder = true,
         minLines = minLines,
-        shape = RoundedCornerShape(14.dp),
-        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            unfocusedBorderColor = Color.Transparent,
-        ),
+        cornerRadius = 14.dp,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
@@ -398,7 +415,6 @@ data class RtMessage(
     val isSystem: Boolean,
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RoundtableChatScreen(
     appVm: AppViewModel,
@@ -510,26 +526,13 @@ fun RoundtableChatScreen(
         })
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-            title = {
-                Column {
-                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (topic.isNotEmpty()) {
-                        Text(
-                            topic,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            },
+    Column(modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.surface)) {
+        SmallTopAppBar(
+            title = title,
+            color = MiuixTheme.colorScheme.surface,
+            subtitle = topic,
+            subtitleColor = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+            navigationIcon = { BackButton(onBack) },
             actions = {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(Icons.Rounded.MoreVert, contentDescription = "会议操作")
@@ -546,17 +549,19 @@ fun RoundtableChatScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 members.forEach { name ->
-                    FilledTonalButton(
+                    TextButton(
+                        text = "$name 反驳",
                         onClick = { doDebate(name, "disagree") },
-                        shape = RoundedCornerShape(50),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp),
-                    ) { Text("$name 反驳", style = MaterialTheme.typography.labelMedium) }
+                        cornerRadius = 50.dp,
+                        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    )
                 }
-                FilledTonalButton(
+                TextButton(
+                    text = "提问",
                     onClick = { doDebate("", "question") },
-                    shape = RoundedCornerShape(50),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp),
-                ) { Text("提问", style = MaterialTheme.typography.labelMedium) }
+                    cornerRadius = 50.dp,
+                    insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                )
             }
         }
 
@@ -580,8 +585,8 @@ fun RoundtableChatScreen(
                     if (showTime && msg.time > 0) {
                         Text(
                             TimeFmt.fullTime(msg.time),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                             modifier = Modifier.padding(vertical = 8.dp),
                         )
                     }
@@ -589,8 +594,8 @@ fun RoundtableChatScreen(
                         MessageEntrance(mine = false, animate = msg.index >= initialCount) {
                             Text(
                                 "[系统] ${msg.content}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 6.dp),
@@ -605,8 +610,8 @@ fun RoundtableChatScreen(
             item {
                 Text(
                     "内容为AI生成，请注意甄别",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -624,31 +629,22 @@ fun RoundtableChatScreen(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
+            val canSend = status == "active" && input.isNotBlank() && !sending
             TextField(
                 value = input,
                 onValueChange = { input = it },
-                placeholder = {
-                    Text(
-                        if (status == "active") "发表你的观点…" else "会议已结束",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                shape = RoundedCornerShape(22.dp),
+                label = if (status == "active") "发表你的观点…" else "会议已结束",
+                useLabelAsPlaceholder = true,
+                cornerRadius = 22.dp,
                 maxLines = 4,
                 enabled = status == "active",
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                ),
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
-            FilledIconButton(
+            IconButton(
                 onClick = {
                     val text = input.trim()
-                    if (text.isEmpty() || sending) return@FilledIconButton
+                    if (text.isEmpty() || sending) return@IconButton
                     sending = true
                     input = ""
                     val body = JSONObject().apply { put("content", text) }
@@ -667,16 +663,24 @@ fun RoundtableChatScreen(
                         }
                     )
                 },
-                enabled = status == "active" && input.isNotBlank() && !sending,
+                enabled = canSend,
                 modifier = Modifier.size(44.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
+                backgroundColor = if (canSend) {
+                    MiuixTheme.colorScheme.primary
+                } else {
+                    MiuixTheme.colorScheme.surfaceContainerHigh
+                },
             ) {
-                Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "发送", modifier = Modifier.size(20.dp))
+                Icon(
+                    Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = "发送",
+                    modifier = Modifier.size(20.dp),
+                    tint = if (canSend) {
+                        MiuixTheme.colorScheme.onPrimary
+                    } else {
+                        MiuixTheme.colorScheme.onSurfaceContainerVariant
+                    },
+                )
             }
         }
     }
@@ -790,8 +794,8 @@ private fun RoundtableMessageRow(msg: RtMessage, animateIn: Boolean) {
             Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
                 Text(
                     if (mine) "你" else msg.speaker,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     modifier = Modifier.padding(bottom = 2.dp, start = 4.dp, end = 4.dp),
                 )
                 Surface(
@@ -801,15 +805,15 @@ private fun RoundtableMessageRow(msg: RtMessage, animateIn: Boolean) {
                         bottomStart = 18.dp,
                         bottomEnd = 18.dp,
                     ),
-                    color = if (mine) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = if (mine) MiuixTheme.colorScheme.primary
+                    else MiuixTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.animateContentSize(),
                 ) {
                     Text(
                         msg.content,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (mine) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurface,
+                        fontSize = 16.sp,
+                        color = if (mine) MiuixTheme.colorScheme.onPrimary
+                        else MiuixTheme.colorScheme.onSurface,
                         modifier = Modifier
                             .padding(horizontal = 14.dp, vertical = 10.dp)
                             .widthIn(max = 264.dp),

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -37,7 +38,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -47,21 +47,6 @@ import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Redeem
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,7 +70,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
@@ -94,6 +81,7 @@ import com.zhiyin.ui.components.ImageCropperDialog
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.LingXinSheet
 import com.zhiyin.ui.components.UserAvatar
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.vm.ChatMsg
 import com.zhiyin.ui.vm.GroupChatViewModel
@@ -106,9 +94,18 @@ import java.io.File
 import kotlin.concurrent.thread
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @OptIn(
-    ExperimentalMaterial3Api::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
     dev.chrisbanes.haze.ExperimentalHazeApi::class,
 )
@@ -172,7 +169,7 @@ fun GroupChatScreen(
     }
 
     val hazeState = remember { HazeState() }
-    val topBarTotalHeight = 64.dp + WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val topBarTotalHeight = 52.dp + WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val density = LocalDensity.current
     var inputBarHeight by remember { mutableStateOf(0.dp) }
     LaunchedEffect(inputBarHeight) {
@@ -187,7 +184,7 @@ fun GroupChatScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface),
+            .background(MiuixTheme.colorScheme.surface),
     ) {
         bgBmp?.let {
             Image(
@@ -225,8 +222,8 @@ fun GroupChatScreen(
                     if (showTime && msg.time > 0) {
                         Text(
                             TimeFmt.fullTime(msg.time),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                             modifier = Modifier.padding(vertical = 8.dp),
                         )
                     }
@@ -240,8 +237,8 @@ fun GroupChatScreen(
             item {
                 Text(
                     "内容为AI生成，请注意甄别",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -260,7 +257,7 @@ fun GroupChatScreen(
                     Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeDefaults.style(
-                            backgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                            backgroundColor = MiuixTheme.colorScheme.surface.copy(alpha = 0.88f),
                             blurRadius = 18.dp,
                             noiseFactor = 0.06f,
                         ),
@@ -283,16 +280,17 @@ fun GroupChatScreen(
                     .padding(horizontal = 12.dp),
             ) {
                 Surface(
+                    onClick = { longEditorOpen = true },
                     shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = MiuixTheme.colorScheme.surfaceContainerHigh,
                 ) {
-                    TextButton(
-                        onClick = { longEditorOpen = true },
-                        shape = RoundedCornerShape(50),
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             "已输入${input.length}字",
-                            style = MaterialTheme.typography.labelMedium,
+                            fontSize = 12.sp,
                         )
                         Spacer(Modifier.width(2.dp))
                         Icon(
@@ -312,25 +310,21 @@ fun GroupChatScreen(
             verticalAlignment = Alignment.Bottom,
         ) {
             IconButton(onClick = { showPlusPanel = true }, modifier = Modifier.size(44.dp)) {
-                Icon(Icons.Rounded.Add, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Rounded.Add, contentDescription = "更多", tint = MiuixTheme.colorScheme.onSurfaceContainerVariant)
             }
             TextField(
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier
                     .weight(1f)
-                    .height(52.dp),
-                placeholder = { Text("和大家聊点什么…", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                shape = RoundedCornerShape(24.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                ),
+                    .heightIn(min = 48.dp),
+                label = "和大家聊点什么…",
+                useLabelAsPlaceholder = true,
+                cornerRadius = 24.dp,
                 maxLines = 4,
+                insideMargin = DpSize(16.dp, 12.dp),
             )
-            FilledIconButton(
+            IconButton(
                 onClick = {
                     if (input.isNotBlank()) {
                         vm.send(input.trim())
@@ -339,27 +333,33 @@ fun GroupChatScreen(
                 },
                 enabled = input.isNotBlank(),
                 modifier = Modifier.size(44.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
+                backgroundColor = if (input.isNotBlank()) {
+                    MiuixTheme.colorScheme.primary
+                } else {
+                    MiuixTheme.colorScheme.surfaceContainerHigh
+                },
             ) {
-                Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "发送", modifier = Modifier.size(20.dp))
+                Icon(
+                    Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = "发送",
+                    modifier = Modifier.size(20.dp),
+                    tint = if (input.isNotBlank()) {
+                        MiuixTheme.colorScheme.onPrimary
+                    } else {
+                        MiuixTheme.colorScheme.onSurfaceContainerVariant
+                    },
+                )
             }
         }
         }
 
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-            ),
+        SmallTopAppBar(
+            color = Color.Transparent,
             modifier = if (bgBmp == null) {
                 Modifier.hazeEffect(
                     state = hazeState,
                     style = HazeDefaults.style(
-                        backgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                        backgroundColor = MiuixTheme.colorScheme.surface.copy(alpha = 0.88f),
                         blurRadius = 18.dp,
                         noiseFactor = 0.06f,
                     ),
@@ -367,25 +367,10 @@ fun GroupChatScreen(
             } else {
                 Modifier
             },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
-                }
-            },
-            title = {
-                Column {
-                    Text(
-                        groupName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        "${vm.group.members.size}人",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
+            navigationIcon = { BackButton(onClick = onBack) },
+            title = groupName,
+            subtitle = "${vm.group.members.size}人",
+            subtitleColor = MiuixTheme.colorScheme.onSurfaceContainerVariant,
             actions = {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(Icons.Rounded.MoreVert, contentDescription = "群设置")
@@ -399,7 +384,7 @@ fun GroupChatScreen(
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text(
                     "提及成员",
-                    style = MaterialTheme.typography.titleSmall,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(vertical = 8.dp),
                 )
@@ -407,21 +392,37 @@ fun GroupChatScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(bottom = 8.dp),
                 ) {
-                    FilledTonalButton(
+                    TextButton(
+                        text = "@所有人",
                         onClick = {
                             input += "@所有人 "
                             showPlusPanel = false
                         },
-                        shape = RoundedCornerShape(50),
-                    ) { Text("@所有人") }
+                        cornerRadius = 50.dp,
+                        colors = ButtonDefaults.textButtonColors(
+                            color = MiuixTheme.colorScheme.secondaryContainer,
+                            textColor = MiuixTheme.colorScheme.onSecondaryContainer,
+                        ),
+                        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        minWidth = 0.dp,
+                        minHeight = 36.dp,
+                    )
                     vm.group.members.forEach { m ->
-                        FilledTonalButton(
+                        TextButton(
+                            text = "@$m",
                             onClick = {
                                 input += "@$m "
                                 showPlusPanel = false
                             },
-                            shape = RoundedCornerShape(50),
-                        ) { Text("@$m") }
+                            cornerRadius = 50.dp,
+                            colors = ButtonDefaults.textButtonColors(
+                                color = MiuixTheme.colorScheme.secondaryContainer,
+                                textColor = MiuixTheme.colorScheme.onSecondaryContainer,
+                            ),
+                            insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            minWidth = 0.dp,
+                            minHeight = 36.dp,
+                        )
                     }
                 }
                 com.zhiyin.ui.SheetActionRow(
@@ -587,12 +588,11 @@ private fun GroupMessageRow(msg: ChatMsg, animateIn: Boolean = false, onLongPres
                         bottomStart = 18.dp,
                         bottomEnd = 18.dp,
                     ),
-                    color = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = if (mine) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
                 ) {
                     Text(
                         text,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        color = if (mine) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
                         modifier = Modifier
                             .widthIn(max = 264.dp)
                             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -633,36 +633,26 @@ private fun GroupRedpacketDialog(
         },
     ) {
         Spacer(Modifier.height(16.dp))
-        androidx.compose.material3.OutlinedTextField(
+        TextField(
             value = amount,
             onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' } },
-            placeholder = { Text("总金额（元）") },
+            label = "总金额（元）",
+            useLabelAsPlaceholder = true,
             singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                unfocusedBorderColor = Color.Transparent,
-            ),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(10.dp))
-        androidx.compose.material3.OutlinedTextField(
+        TextField(
             value = count,
             onValueChange = { count = it.filter { ch -> ch.isDigit() } },
-            placeholder = { Text("个数") },
+            label = "个数",
+            useLabelAsPlaceholder = true,
             singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                unfocusedBorderColor = Color.Transparent,
-            ),
             modifier = Modifier.fillMaxWidth(),
         )
         error?.let {
             Spacer(Modifier.height(8.dp))
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Text(it, color = MiuixTheme.colorScheme.error, fontSize = 13.sp)
         }
     }
 }
@@ -696,7 +686,7 @@ private fun LongTextEditor(
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding(),
-            color = MaterialTheme.colorScheme.surface,
+            color = MiuixTheme.colorScheme.surface,
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(
@@ -706,20 +696,20 @@ private fun LongTextEditor(
                         .padding(horizontal = 4.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = onDismiss) { Text("取消") }
+                    TextButton(text = "取消", onClick = onDismiss, insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp), minHeight = 40.dp)
                     Text(
                         "长文本编辑",
-                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { onApply(text) }) { Text("完成") }
+                    TextButton(text = "完成", onClick = { onApply(text) }, insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp), minHeight = 40.dp)
                 }
                 Text(
                     "${text.length} 字",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     modifier = Modifier
                         .align(Alignment.End)
                         .padding(horizontal = 20.dp),
@@ -732,20 +722,14 @@ private fun LongTextEditor(
                         .weight(1f)
                         .fillMaxWidth()
                         .focusRequester(focusRequester),
-                    placeholder = { Text("输入长文本…", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                    ),
+                    label = "输入长文本…",
+                    useLabelAsPlaceholder = true,
                 )
                 Button(
                     onClick = { if (text.isNotBlank()) onSend(text.trim()) },
                     enabled = text.isNotBlank(),
-                    shape = RoundedCornerShape(50),
+                    cornerRadius = 50.dp,
+                    colors = ButtonDefaults.buttonColorsPrimary(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 12.dp)

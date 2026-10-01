@@ -36,7 +36,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Call
@@ -54,15 +53,6 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -89,6 +79,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -100,6 +91,7 @@ import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.data.PersonaManager
 import com.zhiyin.logic.net.ApiGateway
 import com.zhiyin.logic.util.StickerManager
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.components.EnsurePayPasswordFlow
 import com.zhiyin.ui.components.ImageCropperDialog
@@ -121,6 +113,17 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import kotlin.concurrent.thread
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 sealed interface Bubble {
     data class Text(val text: String, val error: Boolean = false) : Bubble
@@ -210,7 +213,6 @@ private sealed interface PreviewTarget {
 
 
 @OptIn(
-    ExperimentalMaterial3Api::class,
     ExperimentalFoundationApi::class,
     dev.chrisbanes.haze.ExperimentalHazeApi::class,
 )
@@ -328,7 +330,7 @@ fun ChatDetailScreen(
 
     var startDragX by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
     val hazeState = remember { HazeState() }
-    val topBarTotalHeight = 64.dp + WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val topBarTotalHeight = 52.dp + WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val density = LocalDensity.current
     var inputBarHeight by remember { mutableStateOf(0.dp) }
     LaunchedEffect(inputBarHeight) {
@@ -356,7 +358,7 @@ fun ChatDetailScreen(
                     onDragCancel = { startDragX = 0f },
                 )
             }
-            .background(MaterialTheme.colorScheme.surface),
+            .background(MiuixTheme.colorScheme.surface),
     ) {
         if (manualBgActive) {
             bgBmp?.let {
@@ -404,8 +406,8 @@ fun ChatDetailScreen(
                     if (showTime && msg.time > 0) {
                         Text(
                             TimeFmt.fullTime(msg.time),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                             modifier = Modifier.padding(vertical = 8.dp),
                         )
                     }
@@ -427,8 +429,8 @@ fun ChatDetailScreen(
             item {
                 Text(
                     "内容为AI生成，请注意甄别",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -460,7 +462,7 @@ fun ChatDetailScreen(
                     Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeDefaults.style(
-                            backgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                            backgroundColor = MiuixTheme.colorScheme.surface.copy(alpha = 0.88f),
                             blurRadius = 18.dp,
                             noiseFactor = 0.06f,
                         ),
@@ -473,15 +475,13 @@ fun ChatDetailScreen(
                 .imePadding(),
         )
 
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-            ),
+        SmallTopAppBar(
+            color = Color.Transparent,
             modifier = if (!hasBg) {
                 Modifier.hazeEffect(
                     state = hazeState,
                     style = HazeDefaults.style(
-                        backgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                        backgroundColor = MiuixTheme.colorScheme.surface.copy(alpha = 0.88f),
                         blurRadius = 18.dp,
                         noiseFactor = 0.06f,
                     ),
@@ -489,27 +489,13 @@ fun ChatDetailScreen(
             } else {
                 Modifier
             },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
-                }
-            },
-            title = {
-                Column {
-                    Text(
-                        personaName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        if (vm.typing) "正在输入…" else headerSubtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (vm.typing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
-                }
+            navigationIcon = { BackButton(onClick = onBack) },
+            title = personaName,
+            subtitle = if (vm.typing) "正在输入…" else headerSubtitle,
+            subtitleColor = if (vm.typing) {
+                MiuixTheme.colorScheme.primary
+            } else {
+                MiuixTheme.colorScheme.onSurfaceContainerVariant
             },
             actions = {
                 IconButton(onClick = { localToast = "语音通话" }) {
@@ -554,7 +540,7 @@ fun ChatDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else {
-                    androidx.compose.material3.CircularProgressIndicator(color = Color.White)
+                    CircularProgressIndicator()
                 }
             }
         }
@@ -769,8 +755,8 @@ private fun MessageRow(
             isPat -> {
                 Text(
                     (bubble as Bubble.Pat).text,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     modifier = Modifier.padding(vertical = 4.dp),
                 )
             }
@@ -840,9 +826,9 @@ private fun BubbleContent(
     onPreviewImage: (PreviewTarget) -> Unit = {},
 ) {
     val bubbleColor =
-        if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh
+        if (mine) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh
     val bubbleTextColor =
-        if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+        if (mine) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface
 
     when (bubble) {
         is Bubble.Text -> {
@@ -853,15 +839,14 @@ private fun BubbleContent(
                     bottomStart = 18.dp,
                     bottomEnd = 18.dp,
                 ),
-                color = if (bubble.error) MaterialTheme.colorScheme.errorContainer else bubbleColor,
+                color = if (bubble.error) MiuixTheme.colorScheme.errorContainer else bubbleColor,
                 modifier = Modifier
                     .animateContentSize()
                     .combinedClickable(onClick = {}, onLongClick = onLongPress),
             ) {
                 Text(
                     bubble.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (bubble.error) MaterialTheme.colorScheme.onErrorContainer else bubbleTextColor,
+                    color = if (bubble.error) MiuixTheme.colorScheme.onErrorContainer else bubbleTextColor,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
@@ -888,7 +873,7 @@ private fun ThinkBubble(bubble: Bubble.Think, mine: Boolean, onLongPress: () -> 
     val sources = remember(bubble.sourcesJson) { parseSources(bubble.sourcesJson) }
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
+        color = MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
         modifier = Modifier
             .animateContentSize()
             .clickable { expanded = !expanded }
@@ -899,7 +884,7 @@ private fun ThinkBubble(bubble: Bubble.Think, mine: Boolean, onLongPress: () -> 
                 Icon(
                     Icons.Rounded.ExpandMore,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     modifier = Modifier.size(16.dp),
                 )
                 Spacer(Modifier.width(6.dp))
@@ -908,8 +893,8 @@ private fun ThinkBubble(bubble: Bubble.Think, mine: Boolean, onLongPress: () -> 
                         append("思考过程")
                         if (sources.isNotEmpty()) append(" · ${sources.size} 条引用")
                     },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                 )
             }
             if (expanded) {
@@ -917,16 +902,16 @@ private fun ThinkBubble(bubble: Bubble.Think, mine: Boolean, onLongPress: () -> 
                     Spacer(Modifier.height(8.dp))
                     Text(
                         bubble.reasoning,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     )
                 }
                 sources.forEach { src ->
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "• ${src.first}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.primary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -987,7 +972,7 @@ private fun StickerBubble(
         } ?: Box(
             modifier = Modifier
                 .size(110.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp)),
+                .background(MiuixTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp)),
         )
         if (bubble.extra.isNotEmpty()) {
             Spacer(Modifier.height(4.dp))
@@ -998,13 +983,12 @@ private fun StickerBubble(
                     bottomStart = 18.dp,
                     bottomEnd = 18.dp,
                 ),
-                color = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = if (mine) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onLongPress),
             ) {
                 Text(
                     bubble.extra,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    color = if (mine) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
@@ -1044,7 +1028,7 @@ private fun ImageBubble(
         } ?: Box(
             modifier = Modifier
                 .size(width = 160.dp, height = 120.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                .background(MiuixTheme.colorScheme.surfaceContainerHigh),
         )
     }
 }
@@ -1086,7 +1070,7 @@ private fun FileBubble(bubble: Bubble.FileMsg, onLongPress: () -> Unit) {
     var downloading by remember { mutableStateOf(false) }
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = MiuixTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .widthIn(max = 240.dp)
             .combinedClickable(onClick = { }, onLongClick = onLongPress),
@@ -1117,21 +1101,21 @@ private fun FileBubble(bubble: Bubble.FileMsg, onLongPress: () -> Unit) {
             Icon(
                 Icons.Rounded.Description,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = MiuixTheme.colorScheme.primary,
                 modifier = Modifier.size(34.dp),
             )
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(
                     bubble.name,
-                    style = MaterialTheme.typography.bodyMedium,
+                    fontSize = 14.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     if (downloading) "下载中…" else if (bubble.url != null) "点击打开" else "文件",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                 )
             }
         }
@@ -1165,7 +1149,7 @@ private fun VoiceBubble(bubble: Bubble.Voice, mine: Boolean, onLongPress: () -> 
             bottomStart = 18.dp,
             bottomEnd = 18.dp,
         ),
-        color = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = if (mine) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .widthIn(min = 96.dp)
             .combinedClickable(
@@ -1180,14 +1164,14 @@ private fun VoiceBubble(bubble: Bubble.Voice, mine: Boolean, onLongPress: () -> 
             Icon(
                 if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                 contentDescription = "播放语音",
-                tint = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                tint = if (mine) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.primary,
                 modifier = Modifier.size(22.dp),
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 "${bubble.seconds}\"",
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp,
+                color = if (mine) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
             )
         }
     }
@@ -1247,13 +1231,13 @@ private fun MoneyBubble(
             Column {
                 Text(
                     headline,
-                    style = MaterialTheme.typography.bodyMedium,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White,
                 )
                 Text(
                     subline,
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 12.sp,
                     color = Color.White.copy(alpha = 0.88f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1325,8 +1309,7 @@ private fun MoneyDetailDialog(
                 .widthIn(max = 320.dp)
                 .padding(horizontal = 24.dp),
             shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 3.dp,
+            color = MiuixTheme.colorScheme.surfaceContainerHigh,
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -1340,13 +1323,13 @@ private fun MoneyDetailDialog(
                 ) {
                     Text(
                         label,
-                        style = MaterialTheme.typography.labelMedium,
+                        fontSize = 12.sp,
                         color = Color.White.copy(alpha = 0.9f),
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "¥" + moneyFmt(money.amount),
-                        style = MaterialTheme.typography.headlineLarge,
+                        fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                     )
@@ -1354,7 +1337,7 @@ private fun MoneyDetailDialog(
                         Spacer(Modifier.height(6.dp))
                         Text(
                             money.note,
-                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = 14.sp,
                             color = Color.White.copy(alpha = 0.92f),
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -1376,31 +1359,31 @@ private fun MoneyDetailDialog(
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(status, style = MaterialTheme.typography.bodyMedium)
+                        Text(status, fontSize = 14.sp)
                     }
                     Spacer(Modifier.height(12.dp))
                     HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                        color = MiuixTheme.colorScheme.dividerLine.copy(alpha = 0.4f),
                         thickness = 0.5.dp,
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "付款方：$payerName",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "收款方：$peerName",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     )
                     if (time > 0) {
                         Spacer(Modifier.height(4.dp))
                         Text(
                             "时间：" + TimeFmt.fullTime(time),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                         )
                     }
                     claims?.takeIf { it.isNotEmpty() }?.forEach { c ->
@@ -1412,28 +1395,28 @@ private fun MoneyDetailDialog(
                                     append(" 领取了 ¥")
                                     append(moneyFmt(c.amount))
                                 },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 13.sp,
+                                color = MiuixTheme.colorScheme.onSurface,
                                 modifier = Modifier.weight(1f),
                             )
                             if (c.time.isNotEmpty()) {
                                 Text(
                                     c.time,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                                 )
                             }
                         }
                     }
                 }
-                androidx.compose.material3.TextButton(
+                TextButton(
+                    text = "完成",
                     onClick = onDismiss,
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
                         .padding(bottom = 10.dp),
-                ) {
-                    Text("完成")
-                }
+                    insideMargin = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                )
             }
         }
     }
@@ -1506,7 +1489,7 @@ private fun ChatSettingsSheetContent(
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Text(
             "会话设置",
-            style = MaterialTheme.typography.titleMedium,
+            fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(vertical = 8.dp),
         )
@@ -1534,7 +1517,7 @@ private fun ChatSettingsSheetContent(
         }
         HorizontalDivider(
             modifier = Modifier.padding(vertical = 6.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            color = MiuixTheme.colorScheme.dividerLine.copy(alpha = 0.3f),
             thickness = 0.5.dp,
         )
         com.zhiyin.ui.SheetActionRow(
@@ -1617,17 +1600,13 @@ private fun SheetSwitchRow(
     ) {
         Text(
             label,
-            style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f),
-            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (enabled) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.onSurfaceContainerVariant,
         )
-        androidx.compose.material3.Switch(
+        Switch(
             checked = checked,
             enabled = enabled,
             onCheckedChange = onChecked,
-            colors = androidx.compose.material3.SwitchDefaults.colors(
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-            ),
         )
     }
 }
@@ -1657,39 +1636,29 @@ fun AmountInputDialog(
         },
     ) {
         Spacer(Modifier.height(16.dp))
-        androidx.compose.material3.OutlinedTextField(
+        TextField(
             value = amount,
             onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' } },
-            placeholder = { Text(hint) },
+            label = hint,
+            useLabelAsPlaceholder = true,
             singleLine = true,
-            shape = RoundedCornerShape(14.dp),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                 keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
-            ),
-            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                unfocusedBorderColor = Color.Transparent,
             ),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(10.dp))
-        androidx.compose.material3.OutlinedTextField(
+        TextField(
             value = note,
             onValueChange = { note = it },
-            placeholder = { Text("备注（选填）") },
+            label = "备注（选填）",
+            useLabelAsPlaceholder = true,
             singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                unfocusedBorderColor = Color.Transparent,
-            ),
             modifier = Modifier.fillMaxWidth(),
         )
         error?.let {
             Spacer(Modifier.height(8.dp))
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Text(it, color = MiuixTheme.colorScheme.error, fontSize = 13.sp)
         }
     }
 }

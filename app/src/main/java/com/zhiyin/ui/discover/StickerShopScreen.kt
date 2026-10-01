@@ -1,11 +1,13 @@
 package com.zhiyin.ui.discover
 
 import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,17 +23,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,12 +40,16 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.zhiyin.data.StickerPack
 import com.zhiyin.data.StickerPackDetail
 import com.zhiyin.data.StickerShopApi
 import com.zhiyin.logic.util.StickerManager
+import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.RemoteImage
 import com.zhiyin.ui.vm.AppViewModel
@@ -62,6 +58,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private fun itemsJson(d: StickerPackDetail): String {
     val arr = JSONArray()
@@ -71,7 +75,6 @@ private fun itemsJson(d: StickerPackDetail): String {
     return arr.toString()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StickerShopScreen(
     appVm: AppViewModel,
@@ -79,6 +82,7 @@ fun StickerShopScreen(
     onAcquired: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    val colors = MiuixTheme.colorScheme
     var packs by remember { mutableStateOf<List<StickerPack>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var detail by remember { mutableStateOf<StickerPackDetail?>(null) }
@@ -120,27 +124,32 @@ fun StickerShopScreen(
 
     LaunchedEffect(Unit) { reload() }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回") }
-            },
-            title = { Text("表情包商城", fontWeight = FontWeight.SemiBold) },
-        )
+    Scaffold(
+        containerColor = colors.surface,
+        topBar = {
+            SmallTopAppBar(
+                title = "表情包商城",
+                color = colors.surface,
+                navigationIcon = { BackButton(onClick = onBack) },
+            )
+        },
+    ) { padding ->
         if (loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            return@Column
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@Scaffold
         }
-        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(16.dp),
+        ) {
             item {
-                Text("精选表情包，免费领取后即可在聊天中使用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("精选表情包，免费领取后即可在聊天中使用", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
                 Spacer(Modifier.height(10.dp))
             }
             items(packs, key = { it.id }) { p ->
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    color = colors.surfaceContainer,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).clickable {
                         scope.launch {
                             StickerShopApi.detail(p.id).onSuccess { detail = it }
@@ -150,7 +159,7 @@ fun StickerShopScreen(
                 ) {
                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(colors.surfaceContainerHigh),
                             contentAlignment = Alignment.Center,
                         ) {
                             if (p.cover.isNotEmpty()) {
@@ -160,27 +169,27 @@ fun StickerShopScreen(
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop,
                                     placeholder = {
-                                        Icon(Icons.Rounded.Image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
+                                        Icon(Icons.Rounded.Image, contentDescription = null, tint = colors.onSurfaceContainerVariant.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
                                     },
                                 )
                             } else {
-                                Icon(Icons.Rounded.Image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
+                                Icon(Icons.Rounded.Image, contentDescription = null, tint = colors.onSurfaceContainerVariant.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
                             }
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(p.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 if (p.isDefault) {
-                                    Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 6.dp)) {
-                                        Text("默认", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp))
+                                    Surface(shape = RoundedCornerShape(4.dp), color = colors.primary, modifier = Modifier.padding(start = 6.dp)) {
+                                        Text("默认", color = colors.onPrimary, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp))
                                     }
                                 }
                             }
                             Text(
                                 if (p.description.isNotEmpty()) p.description else "${p.itemCount} 张表情",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                                color = colors.onSurfaceVariantSummary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -189,33 +198,33 @@ fun StickerShopScreen(
                         when {
                             p.owned && !p.isDefault -> Surface(
                                 shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                color = colors.surfaceVariant,
                                 modifier = Modifier.clickable { uninstallTarget = p },
                             ) {
                                 Text(
                                     "卸载",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 12.sp,
+                                    color = colors.error,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                 )
                             }
-                            p.owned -> Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            p.owned -> Surface(shape = RoundedCornerShape(16.dp), color = colors.surfaceVariant) {
                                 Text(
                                     "已拥有",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    color = colors.onSurfaceContainerVariant,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                 )
                             }
                             else -> Surface(
                                 shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.primary,
+                                color = colors.primary,
                                 modifier = Modifier.clickable { acquirePack(p.id) },
                             ) {
                                 Text(
                                     "免费领取",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontSize = 12.sp,
+                                    color = colors.onPrimary,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                 )
                             }
@@ -226,7 +235,7 @@ fun StickerShopScreen(
             if (packs.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                        Text("暂无表情包", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("暂无表情包", color = colors.onSurfaceVariantSummary)
                     }
                 }
             }
@@ -262,17 +271,18 @@ private fun PackDetailDialog(
     onAcquire: () -> Unit,
 ) {
     val ctx = LocalContext.current
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth(0.92f)) {
+    val colors = MiuixTheme.colorScheme
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), color = colors.surface, modifier = Modifier.fillMaxWidth(0.92f)) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(d.pack.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-                    IconButton(onClick = onDismiss) { Text("✕", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Text(d.pack.name, fontSize = 16.sp, fontWeight = FontWeight.Black, color = colors.onSurface, modifier = Modifier.weight(1f))
+                    IconButton(onClick = onDismiss) { Text("✕", color = colors.onSurfaceContainerVariant) }
                 }
                 Text(
                     d.pack.description.ifEmpty { "${d.items.size} 张表情 · 免费" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    color = colors.onSurfaceVariantSummary,
                 )
                 Spacer(Modifier.height(12.dp))
                 LazyVerticalGrid(
@@ -288,11 +298,11 @@ private fun PackDetailDialog(
                             }
                         }
                         Box(
-                            Modifier.size(72.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            Modifier.size(72.dp).clip(RoundedCornerShape(10.dp)).background(colors.surfaceContainerHigh),
                             contentAlignment = Alignment.Center,
                         ) {
                             if (bmp != null) {
-                                androidx.compose.foundation.Image(
+                                Image(
                                     bitmap = bmp!!,
                                     contentDescription = name,
                                     modifier = Modifier.fillMaxSize(),
@@ -302,7 +312,7 @@ private fun PackDetailDialog(
                                 Icon(
                                     Icons.Rounded.Image,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    tint = colors.onSurfaceContainerVariant.copy(alpha = 0.5f),
                                     modifier = Modifier.size(24.dp),
                                 )
                             }
@@ -312,13 +322,13 @@ private fun PackDetailDialog(
                 Spacer(Modifier.height(14.dp))
                 Surface(
                     shape = RoundedCornerShape(22.dp),
-                    color = if (d.pack.owned) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+                    color = if (d.pack.owned) colors.surfaceVariant else colors.primary,
                     modifier = Modifier.fillMaxWidth().clickable(enabled = !d.pack.owned, onClick = onAcquire),
                 ) {
                     Text(
                         if (d.pack.owned) "已拥有" else "免费领取",
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        color = if (d.pack.owned) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary,
+                        textAlign = TextAlign.Center,
+                        color = if (d.pack.owned) colors.onSurfaceContainerVariant else colors.onPrimary,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(vertical = 12.dp),
                     )
