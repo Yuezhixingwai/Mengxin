@@ -1,0 +1,708 @@
+﻿package com.zhiyin.ui.chat
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.view.WindowManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.content.ContextCompat
+import com.zhiyin.logic.chat.ChatEngine
+import com.zhiyin.logic.util.StickerManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ChatInputBar(
+    personaName: String,
+    personaId: Int,
+    onSend: (String) -> Unit,
+    onSendSticker: (String) -> Unit,
+    onSendImage: (String) -> Unit,
+    onSendFile: (String, String) -> Unit,
+    onSendVoice: (String, Long) -> Unit,
+    onTransfer: () -> Unit,
+    onRedpacket: () -> Unit,
+    onAddCustomSticker: () -> Unit,
+    onSendVideo: (String) -> Unit = {},
+    onLocalToast: (String) -> Unit = {},
+    onOpenStickerShop: () -> Unit = {},
+    transparentBackground: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var input by rememberSaveable { mutableStateOf("") }
+    var panel by rememberSaveable { mutableStateOf("none") }
+    var voiceMode by rememberSaveable { mutableStateOf(false) }
+    var longEditorOpen by rememberSaveable { mutableStateOf(false) }
+    val isLongInput = input.length >= 80 || input.count { it == '\n' } >= 3
+
+    val imagePick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            val copied = ContentCopy.copyToCache(context, it, "img")
+            if (copied != null) onSendImage(copied.path) else onLocalToast("处理图片失败")
+        }
+    }
+
+    var pendingCameraPath by remember { mutableStateOf<String?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val path = pendingCameraPath
+        pendingCameraPath = null
+        if (ok && path != null) onSendImage(path)
+    }
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            val dir = java.io.File(context.cacheDir, "camera")
+            if (!dir.exists()) dir.mkdirs()
+            val f = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
+            pendingCameraPath = f.absolutePath
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, context.packageName + ".fileprovider", f
+            )
+            try {
+                cameraLauncher.launch(uri)
+            } catch (e: Exception) {
+                onLocalToast("无法打开相机: ${e.message}")
+            }
+        } else {
+            onLocalToast("需要相机权限才能拍照")
+        }
+    }
+
+    val filePick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            val mime = try { context.contentResolver.getType(it) ?: "" } catch (_: Exception) { "" }
+            val copied = ContentCopy.copyToCache(context, it, "file")
+            if (copied != null) {
+                if (mime.startsWith("video/")) onSendVideo(copied.path)
+                else onSendFile(copied.displayName, copied.path)
+            } else onLocalToast("处理文件失败")
+        }
+    }
+
+    val stickerPick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            val copied = ContentCopy.copyToCache(context, it, "sticker")
+            val bmp = copied?.let { c -> android.graphics.BitmapFactory.decodeFile(c.path) }
+            if (bmp == null) {
+                onLocalToast("添加失败：无法读取图片")
+            } else {
+                val name = StickerManager.addCustomSticker(context, bmp)
+                if (name == null) {
+                    onLocalToast("添加失败")
+                } else {
+                    ChatEngine.backupCustomSticker(context, name)
+                    onAddCustomSticker()
+                }
+            }
+        }
+    }
+
+    val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) voiceMode = true else onLocalToast("需要录音权限")
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                if (transparentBackground) Color.Transparent else MiuixTheme.colorScheme.surface
+            ),
+    ) {
+        AnimatedVisibility(
+            visible = panel == "tools",
+            enter = expandVertically(tween(220)) + fadeIn(tween(220)),
+            exit = shrinkVertically(tween(180)) + fadeOut(tween(160)),
+        ) {
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ToolButton(Icons.Outlined.Image, "图片") {
+                    panel = "none"
+                    imagePick.launch("image/*")
+                }
+                ToolButton(Icons.Rounded.PhotoCamera, "拍摄") {
+                    panel = "none"
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                        == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        val dir = java.io.File(context.cacheDir, "camera")
+                        if (!dir.exists()) dir.mkdirs()
+                        val f = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
+                        pendingCameraPath = f.absolutePath
+                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                            context, context.packageName + ".fileprovider", f
+                        )
+                        try {
+                            cameraLauncher.launch(uri)
+                        } catch (e: Exception) {
+                            onLocalToast("无法打开相机: ${e.message}")
+                        }
+                    } else {
+                        cameraPermission.launch(Manifest.permission.CAMERA)
+                    }
+                }
+                ToolButton(Icons.Outlined.AttachFile, "文件") {
+                    panel = "none"
+                    filePick.launch("*/*")
+                }
+                ToolButton(Icons.Rounded.Mic, "语音") {
+                    panel = "none"
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+                        == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        voiceMode = true
+                    } else {
+                        audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                }
+                ToolButton(Icons.Rounded.SwapHoriz, "转账") {
+                    panel = "none"
+                    onTransfer()
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = panel == "sticker",
+            enter = expandVertically(tween(220)) + fadeIn(tween(220)),
+            exit = shrinkVertically(tween(180)) + fadeOut(tween(160)),
+        ) {
+            StickerPanel(
+                onPick = { marker ->
+                    panel = "none"
+                    onSendSticker(marker)
+                },
+                onAdd = {
+                    panel = "none"
+                    stickerPick.launch("image/*")
+                },
+                onOpenShop = onOpenStickerShop,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = isLongInput,
+            enter = expandVertically(tween(180)) + fadeIn(tween(180)),
+            exit = shrinkVertically(tween(150)) + fadeOut(tween(150)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+            ) {
+                Surface(
+                    onClick = { longEditorOpen = true },
+                    shape = RoundedCornerShape(50),
+                    color = MiuixTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "已输入${input.length}字",
+                            fontSize = 12.sp,
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Icon(
+                            Icons.Rounded.OpenInFull,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            if (voiceMode) {
+                HoldToTalk(
+                    onCancel = { voiceMode = false; VoiceRecorder.cancel() },
+                    onDone = { path, sec ->
+                        voiceMode = false
+                        onSendVoice(path, sec)
+                    },
+                    onTooShort = { onLocalToast("录音时间太短") },
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                IconButton(
+                    onClick = { panel = if (panel == "tools") "none" else "tools" },
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.Add,
+                        contentDescription = "更多功能",
+                        tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                    )
+                }
+                TextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 39.dp, max = 140.dp),
+                    label = "写点什么…",
+                    useLabelAsPlaceholder = true,
+                    cornerRadius = 24.dp,
+                    maxLines = 4,
+                    insideMargin = DpSize(16.dp, 12.dp),
+                )
+                IconButton(
+                    onClick = { panel = if (panel == "sticker") "none" else "sticker" },
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.EmojiEmotions,
+                        contentDescription = "表情包",
+                        tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        if (input.isNotBlank()) {
+                            onSend(input.trim())
+                            input = ""
+                        }
+                    },
+                    enabled = input.isNotBlank(),
+                    modifier = Modifier.size(44.dp),
+                    backgroundColor = if (input.isNotBlank()) {
+                        MiuixTheme.colorScheme.primary
+                    } else {
+                        MiuixTheme.colorScheme.surfaceContainerHigh
+                    },
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = "发送",
+                        modifier = Modifier.size(20.dp),
+                        tint = if (input.isNotBlank()) {
+                            MiuixTheme.colorScheme.onPrimary
+                        } else {
+                            MiuixTheme.colorScheme.onSurfaceContainerVariant
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    if (longEditorOpen) {
+        LongTextEditor(
+            initial = input,
+            onDismiss = { longEditorOpen = false },
+            onApply = {
+                input = it
+                longEditorOpen = false
+            },
+            onSend = { text ->
+                longEditorOpen = false
+                input = ""
+                onSend(text)
+            },
+        )
+    }
+}
+
+@Composable
+private fun ToolButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick).padding(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .background(MiuixTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = label, tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceContainerVariant)
+    }
+}
+
+@Composable
+private fun StickerPanel(onPick: (String) -> Unit, onAdd: () -> Unit, onOpenShop: () -> Unit) {
+    val context = LocalContext.current
+    val builtIns = remember { StickerManager.getAllStickers() }
+    val customs = remember { StickerManager.listCustomStickers(context) }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(4),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .background(MiuixTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onAdd),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = "添加表情包", tint = MiuixTheme.colorScheme.onSurfaceContainerVariant)
+            }
+        }
+        item {
+            Column(
+                modifier = Modifier
+                    .size(72.dp)
+                    .background(MiuixTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onOpenShop),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text("🛍", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("商城", fontSize = 12.sp, color = MiuixTheme.colorScheme.onPrimaryContainer)
+            }
+        }
+        itemsIndexed(customs) { _, name ->
+            val bmp = produceState<ImageBitmap?>(initialValue = null, name) {
+                value = withContext(Dispatchers.IO) {
+                    decodeSampledFile(StickerManager.getCustomStickerFile(context, name), 216)
+                }?.asImageBitmap()
+            }
+            bmp.value?.let {
+                StickerCell(it) { onPick("[CUSTOM_STICKER:$name]") }
+            }
+        }
+        itemsIndexed(builtIns) { _, item ->
+            val bmp = produceState<ImageBitmap?>(initialValue = null, item.fileName) {
+                value = withContext(Dispatchers.IO) {
+                    StickerManager.loadStickerBitmap(context, item.packId, item.fileName)
+                }?.asImageBitmap()
+            }
+            bmp.value?.let {
+                StickerCell(it) { onPick("[STICKER:${item.fileName}]") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StickerCell(bmp: ImageBitmap, onClick: () -> Unit) {
+    Image(
+        bitmap = bmp,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        filterQuality = FilterQuality.High,
+        modifier = Modifier
+            .size(72.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+    )
+}
+
+private fun decodeSampledFile(f: java.io.File, target: Int): android.graphics.Bitmap? {
+    return try {
+        if (!f.exists()) return null
+        val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(f.absolutePath, o)
+        var s = 1
+        while (o.outWidth / s > target || o.outHeight / s > target) s *= 2
+        android.graphics.BitmapFactory.decodeFile(
+            f.absolutePath, android.graphics.BitmapFactory.Options().apply { inSampleSize = s }
+        )
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun decodeSampledAsset(context: android.content.Context, fileName: String, target: Int): android.graphics.Bitmap? {
+    return try {
+        val ins = context.assets.open("stickers/$fileName")
+        val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeStream(ins, null, o)
+        ins.close()
+        var s = 1
+        while (o.outWidth / s > target || o.outHeight / s > target) s *= 2
+        val ins2 = context.assets.open("stickers/$fileName")
+        val bmp = android.graphics.BitmapFactory.decodeStream(
+            ins2, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = s }
+        )
+        ins2.close()
+        bmp
+    } catch (_: Exception) {
+        null
+    }
+}
+
+@Composable
+private fun HoldToTalk(
+    onCancel: () -> Unit,
+    onDone: (String, Long) -> Unit,
+    onTooShort: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var recording by remember { mutableStateOf(false) }
+    var elapsed by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(recording) {
+        elapsed = 0L
+        while (recording) {
+            kotlinx.coroutines.delay(500)
+            elapsed += 500
+        }
+    }
+
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(39.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(
+                    if (recording) MiuixTheme.colorScheme.errorContainer
+                    else MiuixTheme.colorScheme.surfaceContainerHigh
+                )
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            val path = VoiceRecorder.start(context)
+                            if (path == null) {
+                                onTooShort()
+                            } else {
+                                recording = true
+                                val released = tryAwaitRelease()
+                                recording = false
+                                val result = VoiceRecorder.stop()
+                                if (!released) {
+                                    VoiceRecorder.cancel()
+                                } else if (result != null) {
+                                    onDone(result.first, result.second)
+                                } else {
+                                    onTooShort()
+                                }
+                            }
+                        },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (recording) {
+                    val transition = rememberInfiniteTransition(label = "rec")
+                    val alpha by transition.animateFloat(
+                        initialValue = 0.3f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
+                        label = "dot",
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .background(
+                                MiuixTheme.colorScheme.error.copy(alpha = alpha),
+                                CircleShape,
+                            ),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("${elapsed / 1000.0}s", fontSize = 14.sp)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(
+                    if (recording) "松开 发送" else "按住 说话",
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        IconButton(
+            onClick = { onCancel() },
+            modifier = Modifier.size(44.dp),
+        ) {
+            Text("取消", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceContainerVariant)
+        }
+    }
+}
+
+@Composable
+private fun LongTextEditor(
+    initial: String,
+    onDismiss: () -> Unit,
+    onApply: (String) -> Unit,
+    onSend: (String) -> Unit,
+) {
+    var text by rememberSaveable { mutableStateOf(initial) }
+    val focusRequester = remember { FocusRequester() }
+    val view = LocalView.current
+    SideEffect {
+        (view.parent as? DialogWindowProvider)?.window
+            ?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+    }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(80)
+        focusRequester.requestFocus()
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding(),
+            color = MiuixTheme.colorScheme.surface,
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(text = "取消", onClick = onDismiss, insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp), minHeight = 40.dp)
+                    Text(
+                        "长文本编辑",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(text = "完成", onClick = { onApply(text) }, insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp), minHeight = 40.dp)
+                }
+                Text(
+                    "${text.length}字",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(horizontal = 20.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+                TextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    label = "输入文本…",
+                    useLabelAsPlaceholder = true,
+                )
+                Button(
+                    onClick = { if (text.isNotBlank()) onSend(text.trim()) },
+                    enabled = text.isNotBlank(),
+                    cornerRadius = 50.dp,
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .navigationBarsPadding(),
+                ) {
+                    Text("发送")
+                }
+            }
+        }
+    }
+}
