@@ -168,6 +168,11 @@ object CallEngine {
                 val reply = chatTurn(context, userText)
                 if (barged.get()) return
                 if (reply == null) continue
+                if (pendingUtterances.isNotEmpty()) {
+                    // 思考期间用户插话：丢弃这条回复，直接听用户接着说
+                    pendingUtterances.clear()
+                    continue
+                }
                 speakUtterance(context, reply)
             }
         } catch (e: Exception) {
@@ -215,7 +220,7 @@ object CallEngine {
             val history = MsgRepo.getAll(context, sid)
             var count = 0
             for (i in history.indices.reversed()) {
-                if (count >= 12) break
+                if (count >= 6) break
                 val raw = history[i][1]
                 val clean = com.zhiyin.logic.chat.ChatEngine.cleanHistoryContent(context, raw) ?: continue
                 val role = if (history[i][0] == "ai") "assistant" else "user"
@@ -224,35 +229,19 @@ object CallEngine {
             }
             messages.put(JSONObject().put("role", "user").put("content", userText))
 
-            val body = JSONObject()
-            body.put("model", resolveModel(context))
-            body.put("messages", messages)
-            body.put("thinking", false)
-            body.put("sticker_enabled", false)
-            // 不带 persona_name/raw_user_content：通话内容不与聊天会话关联、不落任何聊天记录
-            if (prefs(context).getBoolean("use_official_quota", true)) body.put("use_official", 1)
-
-            val resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/chat", body.toString(), token)
+            // 通话专用直连：服务端跳过记忆/审核/人设重管线，直接走文本池（快很多）
+            val body = JSONObject().put("messages", messages)
+            val resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/call/chat", body.toString(), token)
             val json = JSONObject(resp)
             if (json.has("error")) {
                 state.value = state.value.copy(subtitle = "出错了：${json.optString("error")}")
                 return null
             }
-            val content = if (json.has("choices"))
-                json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "")
-            else ""
-            cleanForSpeech(content)
+            cleanForSpeech(json.optString("content", ""))
         } catch (e: Exception) {
             state.value = state.value.copy(subtitle = "网络异常: ${e.message}")
             null
         }
-    }
-
-    private fun resolveModel(context: Context): String {
-        return try {
-            val obj = JSONObject(prefs(context).getString("active_text_model", ""))
-            obj.optString("model", "").ifEmpty { "gpt-4o-mini" }
-        } catch (_: Exception) { "gpt-4o-mini" }
     }
 
     /** 剥动作描写/表情/符号，转成适合读出来的口语 */
@@ -446,11 +435,11 @@ object CallEngine {
                 if (state.value.phase == Phase.SPEAKING) {
                     // 插嘴检测：连续 300ms 高能量即打断
                     if (rms > bargeTh) loudStreak++ else loudStreak = 0
-                    if (loudStreak >= 3) {
+                    if (loudStreak >= 2) {
                         loudStreak = 0
                         onBargeIn()
                     }
-                } else if (state.value.phase == Phase.LISTENING) {
+                } else if (state.value.phase == Phase.LISTENING || state.value.phase == Phase.THINKING) {
                     if (!speechStarted) {
                         if (rms > voiceTh) { loudStreak++ } else { loudStreak = 0; totalWait++ }
                         if (loudStreak >= 2) { // 200ms 确认开口
