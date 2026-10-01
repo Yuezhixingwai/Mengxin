@@ -119,6 +119,16 @@ object CallEngine {
         state.value = s.copy(micMuted = !s.micMuted)
     }
 
+    /** 手动打断：UI 按钮保底，立即停止播放并回到听用户说 */
+    fun interruptSpeaking() {
+        if (state.value.phase != Phase.SPEAKING) return
+        interrupted.set(true)
+        stopPlayer()
+        pendingUtterances.clear()
+        synchronized(bufLock) { speechBuf.clear() }
+        state.value = state.value.copy(phase = Phase.LISTENING, subtitle = "好，你先说～")
+    }
+
     fun toggleSpeaker(on: Boolean) {
         try { audioManager?.isSpeakerphoneOn = on } catch (_: Exception) {}
     }
@@ -154,26 +164,17 @@ object CallEngine {
             startMic(context)
             prefetchAcks()
 
-            // 人设先说第一句
-            val greeting = chatTurn(context, "[电话刚刚接通] 请你先开口，像真人接电话一样自然地先说第一句话，简短口语。")
-            if (greeting != null) speakUtterance(context, greeting)
+            // 人设先说第一句（流式：LLM 边生成边说，不等整段）
+            runTurnStreaming(context, "[电话刚刚接通] 请你先开口，像真人接电话一样自然地先说第一句话，简短口语。")
             if (barged.get()) return
 
-            // 主循环：听 → 想 → 说 → 听…
+            // 主循环：听 → 想 → 边生成边说 → 听…
             while (!barged.get()) {
                 state.value = state.value.copy(phase = Phase.LISTENING, subtitle = "")
                 val userText = listenForUtterance() ?: continue
                 if (barged.get()) return
-                state.value = state.value.copy(phase = Phase.THINKING, subtitle = userText)
-                val reply = chatTurn(context, userText)
-                if (barged.get()) return
-                if (reply == null) continue
-                if (pendingUtterances.isNotEmpty()) {
-                    // 思考期间用户插话：丢弃这条回复，直接听用户接着说
-                    pendingUtterances.clear()
-                    continue
-                }
-                speakUtterance(context, reply)
+                pendingUtterances.clear()
+                runTurnStreaming(context, userText)
             }
         } catch (e: Exception) {
             if (!barged.get()) {
@@ -211,37 +212,113 @@ object CallEngine {
             "- 你的人设口癖和称呼方式要保留，但上面这些电话感规则永远优先。"
     }
 
-    private fun chatTurn(context: Context, userText: String): String? {
-        val token = SessionStore(context).getToken() ?: return null
-        return try {
-            val messages = JSONArray()
-            messages.put(JSONObject().put("role", "system").put("content", callStylePrompt()))
-            val sid = "persona_$personaName"
-            val history = MsgRepo.getAll(context, sid)
-            var count = 0
-            for (i in history.indices.reversed()) {
-                if (count >= 6) break
-                val raw = history[i][1]
-                val clean = com.zhiyin.logic.chat.ChatEngine.cleanHistoryContent(context, raw) ?: continue
-                val role = if (history[i][0] == "ai") "assistant" else "user"
-                messages.put(JSONObject().put("role", role).put("content", clean))
-                count++
-            }
-            messages.put(JSONObject().put("role", "user").put("content", userText))
-
-            // 通话专用直连：服务端跳过记忆/审核/人设重管线，直接走文本池（快很多）
-            val body = JSONObject().put("messages", messages)
-            val resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/call/chat", body.toString(), token)
-            val json = JSONObject(resp)
-            if (json.has("error")) {
-                state.value = state.value.copy(subtitle = "出错了：${json.optString("error")}")
-                return null
-            }
-            cleanForSpeech(json.optString("content", ""))
-        } catch (e: Exception) {
-            state.value = state.value.copy(subtitle = "网络异常: ${e.message}")
-            null
+    private fun buildCallMessages(context: Context, userText: String): JSONArray {
+        val messages = JSONArray()
+        messages.put(JSONObject().put("role", "system").put("content", callStylePrompt()))
+        val sid = "persona_$personaName"
+        val history = MsgRepo.getAll(context, sid)
+        var count = 0
+        for (i in history.indices.reversed()) {
+            if (count >= 6) break
+            val raw = history[i][1]
+            val clean = com.zhiyin.logic.chat.ChatEngine.cleanHistoryContent(context, raw) ?: continue
+            val role = if (history[i][0] == "ai") "assistant" else "user"
+            messages.put(JSONObject().put("role", role).put("content", clean))
+            count++
         }
+        messages.put(JSONObject().put("role", "user").put("content", userText))
+        return messages
+    }
+
+    /** 无标点时超过该长度强制切句，尽快开口 */
+    private const val FORCE_CUT = 14
+
+    /** 从缓冲里抽一句完整的话（有句读按句读，没有就攒够 FORCE_CUT 字强切） */
+    private fun takeCompleteSentence(buf: StringBuilder): String? {
+        val t = buf.toString()
+        for (i in t.indices) {
+            val ch = t[i]
+            if (ch == '。' || ch == '！' || ch == '？' || ch == '；' || ch == '\n') {
+                val sent = t.substring(0, i + 1).trim()
+                buf.delete(0, i + 1)
+                return sent.ifEmpty { takeCompleteSentence(buf) }
+            }
+        }
+        if (t.length >= FORCE_CUT) {
+            buf.clear()
+            return t.trim()
+        }
+        return null
+    }
+
+    /**
+     * 流式话轮：LLM SSE 边生成，第一句一到立刻 TTS 播放，不等整段回复。
+     * 思考/播放期间用户插话 → 立即中止本话轮。
+     */
+    private suspend fun runTurnStreaming(context: Context, userText: String) {
+        val token = SessionStore(context).getToken()
+        if (token == null) {
+            state.value = state.value.copy(subtitle = "未登录")
+            return
+        }
+        state.value = state.value.copy(phase = Phase.THINKING, subtitle = userText)
+        val sentences = kotlinx.coroutines.channels.Channel<String>(Channel.UNLIMITED)
+
+        // 播放协程：按顺序合成+播放抽出来的句子
+        val speaker = launch(Dispatchers.IO) {
+            for (sent in sentences) {
+                if (barged.get() || interrupted.get()) break
+                val spoken = cleanForSpeech(sent)
+                if (spoken.isEmpty()) continue
+                val f = ttsFile(context, spoken) ?: continue
+                if (barged.get() || interrupted.get()) break
+                state.value = state.value.copy(phase = Phase.SPEAKING, subtitle = spoken)
+                playAndWait(f)
+                if (barged.get() || interrupted.get()) break
+            }
+        }
+
+        try {
+            withContext(Dispatchers.IO) {
+                val conn = java.net.URL(ApiGateway.ZHIYIN_BASE + "/api/call/chat").openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.connectTimeout = 8000
+                conn.readTimeout = 20000
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer " + token)
+                val body = JSONObject().put("messages", buildCallMessages(context, userText)).put("stream", 1)
+                conn.outputStream.use { it.write(body.toString().toByteArray()) }
+
+                val reader = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream))
+                val buf = StringBuilder()
+                reader.forEachLine { line ->
+                    if (barged.get() || interrupted.get()) return@forEachLine
+                    if (!line.startsWith("data:")) return@forEachLine
+                    val data = line.removePrefix("data:").trim()
+                    if (data.isEmpty() || data == "[DONE]") return@forEachLine
+                    val delta = try {
+                        val j = JSONObject(data)
+                        j.optJSONArray("choices")?.getJSONObject(0)?.optJSONObject("delta")?.optString("content", "") ?: ""
+                    } catch (_: Exception) { "" }
+                    if (delta.isNotEmpty()) {
+                        buf.append(delta)
+                        while (true) {
+                            val sent = takeCompleteSentence(buf) ?: break
+                            sentences.trySend(sent)
+                        }
+                    }
+                }
+                val rest = buf.toString().trim()
+                if (rest.isNotEmpty()) sentences.trySend(rest)
+            }
+        } catch (e: Exception) {
+            if (!interrupted.get() && !barged.get()) {
+                state.value = state.value.copy(subtitle = "网络异常: ${e.message}")
+            }
+        }
+        sentences.close()
+        speaker.join()
     }
 
     /** 剥动作描写/表情/符号，转成适合读出来的口语 */
@@ -430,7 +507,7 @@ object CallEngine {
                 // 噪声底自适应（EMA）
                 if (rms < noiseFloor * 1.6) noiseFloor = noiseFloor * 0.97 + rms * 0.03
                 val voiceTh = noiseFloor * 2.2 + 320
-                val bargeTh = noiseFloor * 3.8 + 900
+                val bargeTh = noiseFloor * 3.0 + 700
 
                 if (state.value.phase == Phase.SPEAKING) {
                     // 插嘴检测：连续 300ms 高能量即打断
@@ -456,7 +533,7 @@ object CallEngine {
                         speechFrames++
                         if (rms > voiceTh) quietStreak = 0 else quietStreak++
                         // 说完后静音 700ms 收句，或最长 20 秒
-                        if ((quietStreak >= 6 && speechFrames >= 2) || speechFrames >= 200) {
+                        if ((quietStreak >= 4 && speechFrames >= 2) || speechFrames >= 200) {
                             val data = synchronized(bufLock) { speechBuf.toList() }
                             speechBuf.clear()
                             speechStarted = false
