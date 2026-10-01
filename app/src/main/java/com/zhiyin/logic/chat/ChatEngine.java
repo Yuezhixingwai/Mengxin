@@ -1088,7 +1088,7 @@ public class ChatEngine {
         String c = raw.trim();
         if (c.isEmpty() || "[空消息]".equals(c)) return null;
         if (c.startsWith("[错误]") || c.startsWith("[pat]") || c.startsWith("[image]")
-                || c.startsWith("[voice]") || c.startsWith("[file]")) return null;
+                || c.startsWith("[voice]") || c.startsWith("[file]") || c.startsWith("[calllog]")) return null;
         if (c.contains(MARK_THINK) || c.contains(MARK_SRC) || c.contains("|||voice_reply|||") || c.contains("|||auto_sticker|||")) return null;
         if (c.startsWith("(转账") || c.startsWith("(红包") || c.startsWith("(收款")) {
             c = c.replaceAll("\\|#\\d+", "");

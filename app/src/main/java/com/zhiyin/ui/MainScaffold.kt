@@ -1,6 +1,8 @@
 package com.zhiyin.ui
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -159,6 +161,8 @@ private enum class MainTab(
 
 sealed interface Overlay {
     data class Chat(val name: String, val desc: String, val id: Int) : Overlay
+    data class Call(val name: String, val desc: String, val id: Int) : Overlay
+    data object Invite : Overlay
     data class Group(val name: String, val members: List<String>?) : Overlay
     data object Settings : Overlay
     data object AddFriend : Overlay
@@ -239,6 +243,42 @@ fun MainScaffold(appVm: AppViewModel) {
     }
 
     BackHandler(enabled = overlay != null) { pop() }
+
+    // ===== 启动自动检查更新：每次冷启动一次；用户点"以后再说"后同一版本不再提醒 =====
+    val _upCtx = LocalContext.current
+    var updateInfo by remember { mutableStateOf<com.zhiyin.data.AccountApi.VersionInfo?>(null) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(2500)
+        try {
+            val v = com.zhiyin.data.AccountApi.versionLatest() ?: return@LaunchedEffect
+            val local = _upCtx.packageManager.getPackageInfo(_upCtx.packageName, 0).versionName ?: ""
+            if (v.version.isEmpty() || !isNewerAppVersion(v.version, local)) return@LaunchedEffect
+            val prefs = _upCtx.getSharedPreferences("zhiyin_update", 0)
+            if (prefs.getString("dismissed", null) == v.version) return@LaunchedEffect
+            updateInfo = v
+        } catch (_: Exception) {
+        }
+    }
+    updateInfo?.let { uv ->
+        com.zhiyin.ui.components.LingXinDialog(
+            onDismiss = {
+                updateInfo = null
+                _upCtx.getSharedPreferences("zhiyin_update", 0).edit().putString("dismissed", uv.version).apply()
+            },
+            title = "发现新版本 ${uv.version}",
+            text = uv.changelog.ifEmpty { "修复已知问题，优化使用体验" },
+            confirmText = "去下载",
+            dismissText = "以后再说",
+            onConfirm = {
+                updateInfo = null
+                try {
+                    _upCtx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uv.apkUrl)))
+                } catch (_: Exception) {
+                    appVm.showToast("无法打开下载链接")
+                }
+            },
+        )
+    }
 
     val globalBgEnabled by appVm.globalBgEnabled.collectAsState()
     val globalBgPath by appVm.globalBgPath.collectAsState()
@@ -325,6 +365,17 @@ fun MainScaffold(appVm: AppViewModel) {
                             currentTab = 3
                         },
                         onOpenStickerShop = { push(Overlay.StickerShop) },
+                        onOpenCall = { push(Overlay.Call(o.name, o.desc, o.id)) },
+                    )
+                    is Overlay.Call -> com.zhiyin.ui.call.CallScreen(
+                        personaName = o.name,
+                        personaDesc = o.desc,
+                        personaId = o.id,
+                        onEnd = { pop() },
+                    )
+                    Overlay.Invite -> com.zhiyin.ui.contacts.InviteScreen(
+                        appVm = appVm,
+                        onBack = { pop() },
                     )
                     is Overlay.Group -> GroupChatScreen(
                         groupName = o.name,
@@ -593,6 +644,7 @@ fun MainScaffold(appVm: AppViewModel) {
                         onOpenRoundtable = { push(Overlay.Roundtable) },
                         onOpenFavorites = { push(Overlay.Favorites) },
                         onOpenSavedImages = { push(Overlay.SavedImages) },
+                        onOpenInvite = { push(Overlay.Invite) },
                         onOpenSavedFiles = { push(Overlay.SavedFiles) },
                         onOpenSubscription = { push(Overlay.Subscription) },
                         onOpenRecharge = { push(Overlay.Recharge) },
@@ -816,6 +868,7 @@ private fun MainContent(
     onOpenRoundtable: () -> Unit,
     onOpenFavorites: () -> Unit = {},
     onOpenSavedImages: () -> Unit = {},
+    onOpenInvite: () -> Unit = {},
     onOpenSavedFiles: () -> Unit = {},
     onOpenSubscription: () -> Unit = {},
     onOpenRecharge: () -> Unit = {},
@@ -951,6 +1004,7 @@ private fun MainContent(
                             onOpenSavedFiles = onOpenSavedFiles,
                             onOpenSubscription = onOpenSubscription,
                             onOpenRecharge = onOpenRecharge,
+                            onOpenInvite = onOpenInvite,
                             onOpenPersonaDetail = onOpenPersonaDetail,
                             onOpenCreatePersona = onOpenCreatePersona,
                         )
@@ -1192,4 +1246,16 @@ internal fun ConversationRow(
             }
         }
     }
+}
+
+private fun isNewerAppVersion(remote: String, local: String): Boolean {
+    fun parts(v: String) = v.removePrefix("v").removePrefix("V").split(".").map { it.trim().toIntOrNull() ?: 0 }
+    val r = parts(remote)
+    val l = parts(local)
+    for (i in 0 until maxOf(r.size, l.size)) {
+        val a = r.getOrElse(i) { 0 }
+        val b = l.getOrElse(i) { 0 }
+        if (a != b) return a > b
+    }
+    return false
 }

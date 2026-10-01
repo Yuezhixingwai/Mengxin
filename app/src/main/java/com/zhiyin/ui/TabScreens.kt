@@ -46,6 +46,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.CardGiftcard
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.Check
@@ -525,6 +526,7 @@ fun MeScreen(
     onOpenSavedFiles: () -> Unit = {},
     onOpenSubscription: () -> Unit = {},
     onOpenRecharge: () -> Unit = {},
+    onOpenInvite: () -> Unit = {},
     onOpenPersonaDetail: (Int) -> Unit = {},
     onOpenCreatePersona: () -> Unit = {},
 ) {
@@ -702,6 +704,45 @@ fun MeScreen(
                     fontWeight = FontWeight.SemiBold,
                     color = colors.primary,
                 )
+                Icon(
+                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = colors.onSurfaceVariantSummary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+
+        StaggeredAppear(delay = 165) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                    .background(colors.surfaceContainer, RoundedCornerShape(20.dp))
+                    .clickable(onClick = onOpenInvite)
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Rounded.CardGiftcard,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(26.dp),
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "邀请好友得灵心币",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
+                    )
+                    Text(
+                        "好友注册填你的邀请码，双方各得灵心币",
+                        fontSize = 12.sp,
+                        color = colors.onSurfaceVariantSummary,
+                    )
+                }
                 Icon(
                     Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                     contentDescription = null,
