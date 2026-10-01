@@ -263,6 +263,7 @@ object CallEngine {
             return
         }
         state.value = state.value.copy(phase = Phase.THINKING, subtitle = userText)
+        interrupted.set(false) // 上一次打断的标记复位，否则后续话轮全部哑火
         val sentences = Channel<String>(Channel.UNLIMITED)
 
         try {
