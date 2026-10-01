@@ -8,6 +8,7 @@ import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import com.zhiyin.logic.data.MsgRepo
@@ -18,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -25,6 +27,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -53,7 +56,11 @@ object CallWsEngine {
 
     val state = MutableStateFlow(UiState())
 
-    private const val WS_HOST = "wss://api.zhiyin.zhendeqiang.top/ws/call"
+    private const val API_HOST = "api.zhiyin.zhendeqiang.top"
+    private const val WS_HOST = "wss://" + API_HOST + "/ws/call"
+    // 域名解析到了中转层（70.39.201.x），那层不转发 WebSocket 升级头 → 必须直连源站 IP。
+    // 只替换解析结果，SNI / Host / 证书校验仍用域名，所以 TLS 依然安全可信。
+    private const val ORIGIN_IP = "198.44.182.206"
     private const val MIC_RATE = 16000
     private const val OUT_RATE = 24000
 
@@ -68,6 +75,7 @@ object CallWsEngine {
     private var micThread: Thread? = null
     private var aec: AcousticEchoCanceler? = null
     private var ns: NoiseSuppressor? = null
+    private var agc: AutomaticGainControl? = null
     private var audioManager: AudioManager? = null
     private var ctxRef: Context? = null
 
@@ -75,6 +83,7 @@ object CallWsEngine {
     private var personaDesc = ""
     private var connectAt = 0L
     private val speaking = AtomicBoolean(false)
+    private val fellBack = AtomicBoolean(false) // 已回退到 HTTP 引擎（挂断时要一起停）
 
     // ---------- 对外 API（与 CallEngine 对齐，CallScreen 可无缝切换） ----------
 
@@ -110,6 +119,8 @@ object CallWsEngine {
         try { ws?.close(1000, "bye") } catch (_: Exception) {}
         stopAudio()
         cleanup()
+        // 兼容模式（HTTP 引擎）在跑时必须一起停掉，否则挂断后它还在继续说
+        if (fellBack.get()) { try { CallEngine.hangup() } catch (_: Exception) {} }
     }
 
     fun toggleMute() {
@@ -144,14 +155,15 @@ object CallWsEngine {
             am.mode = AudioManager.MODE_IN_COMMUNICATION
             am.isSpeakerphoneOn = true
 
-            delay(Random.nextLong(500, 1500))
-            state.value = state.value.copy(phase = Phase.DIALING, subtitle = "正在等待对方接听…")
+            delay(Random.nextLong(250, 700)) // 接通更快，别让用户干等
+            state.value = state.value.copy(phase = Phase.DIALING, subtitle = "正在接通…")
 
             startAudio(context)
 
             val ok = connectWs(context, token)
             if (!ok) {
                 // 兜底：HTTP 模式
+                fellBack.set(true)
                 state.value = state.value.copy(mode = "http", subtitle = "已切换兼容模式")
                 stopAudio()
                 running.set(false)
@@ -174,7 +186,19 @@ object CallWsEngine {
     }
 
     private suspend fun connectWs(context: Context, token: String): Boolean {
+        val directDns = object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> {
+                if (hostname.equals(API_HOST, ignoreCase = true)) {
+                    val list = mutableListOf<InetAddress>()
+                    try { list.add(InetAddress.getByName(ORIGIN_IP)) } catch (_: Exception) {}
+                    try { list.addAll(Dns.SYSTEM.lookup(hostname)) } catch (_: Exception) {}
+                    if (list.isNotEmpty()) return list.distinct()
+                }
+                return Dns.SYSTEM.lookup(hostname)
+            }
+        }
         val client = OkHttpClient.Builder()
+            .dns(directDns)
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS) // 长连接
             .pingInterval(20, TimeUnit.SECONDS)
@@ -223,7 +247,7 @@ object CallWsEngine {
         ws = client.newWebSocket(request, listener)
         // 等 ready（最多 10 秒）
         var waited = 0
-        while (waited < 10000 && !ready && running.get()) {
+        while (waited < 6000 && !ready && running.get()) {
             delay(100)
             waited += 100
         }
@@ -289,15 +313,31 @@ object CallWsEngine {
 
     private fun callStylePrompt(): String {
         val base = if (personaDesc.isNotBlank()) personaDesc + "\n\n" else ""
-        return base + "【当前是实时语音通话，不是文字聊天】\n" +
-            "你正在和用户打电话。保持你的人设性格，但说话方式必须切换成\"打电话的活人\"。\n" +
-            "一、硬性规则：每次只说1~2句，每句不超过18个字；禁止旁白、动作描写、括号、星号、emoji、书面语；只输出要说出口的话。\n" +
-            "二、语气：多用语气词（嗯、啊、呀、欸、诶、嘛、哈），会反问、会接话头、会撒娇，像真人煲电话粥。\n" +
-            "三、情绪感应：对方低落就放轻放缓先关心；兴奋就一起嗨；烦躁就少问多哄；很久没声音就催一句\"喂？还在吗\"。\n" +
-            "四、被打断时顺着对方新话题说，不要重复上一句。"
-    }
-
-    // ---------- 音频 ----------
+        return base +
+            "【现在是实时语音通话，你在打电话，不是在打字聊天】\n" +
+            "保持你人设的性格，但说话方式必须切换成\"电话里活人的样子\"。\n" +
+            "\n" +
+            "■ 铁律（违反就算失败）\n" +
+            "1. 每次只说 1~2 句，每句不超过 18 个字；说完就停，等对方接话，不要一口气讲完。\n" +
+            "2. 只输出\"说出口的声音\"。禁止旁白、禁止动作神态描写、禁止括号、星号、emoji、颜文字、书面语。\n" +
+            "3. 允许半截话、犹豫、重复、改口，用语气词（嗯/啊/呀/欸/诶/嘛/哈/哎哟）表现停顿感，不要每句都工整完整。\n" +
+            "\n" +
+            "■ 活人感范例（照这个味道说，别照抄内容）\n" +
+            "对方：在干嘛呢 → 你：嗯…刚洗完澡，正躺着呢。你呢，怎么这个点想起我了？\n" +
+            "对方：今天好累啊 → 你：又加班啦？（顿一下）那你先别动，我跟你说个更烦的，我今天…\n" +
+            "对方：哦。 → 你：喂？…你这声\"哦\"我听着不对劲啊，是不是生我气了？\n" +
+            "对方：跟你说个超好玩的 → 你：真的假的？快讲快讲，我听着呢。\n" +
+            "\n" +
+            "■ 情绪感应（重点，先读出情绪再接话）\n" +
+            "· 声音低、话少、叹气 → 别急着逗，放轻放慢：\"怎么啦，声音听着闷闷的。\"\n" +
+            "· 兴奋、语速快 → 跟着一起嗨：\"哈哈哈真的？我也想看看！\"\n" +
+            "· 烦躁、骂人 → 少提问多顺着哄：\"嗯嗯，这确实烦人…别气别气。\"\n" +
+            "· 说到伤心事 → 不问细节先站队：\"他怎么能这样啊，换我我也气。\"\n" +
+            "· 沉默几秒 → 主动催一声：\"喂？还在吗？\"或\"怎么不说话了呀。\"\n" +
+            "\n" +
+            "■ 被打断时\n" +
+            "顺着对方的新话题接，绝不重复自己刚说过的，可以先应一声：\"好好好，你说你说。\""
+    }    // ---------- 音频 ----------
 
     private fun startAudio(context: Context) {
         // 播放：24k 单声道 16bit PCM 流式
@@ -331,8 +371,10 @@ object CallWsEngine {
         if (rec == null) return
         audioRecord = rec
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && rec.state == AudioRecord.STATE_INITIALIZED) {
-            try { aec = AcousticEchoCanceler.create(rec.audioSessionId) } catch (_: Exception) {}
-            try { ns = NoiseSuppressor.create(rec.audioSessionId) } catch (_: Exception) {}
+            try { aec = AcousticEchoCanceler.create(rec.audioSessionId); aec?.enabled = true } catch (_: Exception) {}
+            try { ns = NoiseSuppressor.create(rec.audioSessionId); ns?.enabled = true } catch (_: Exception) {}
+            // AGC 自动增益：手机离嘴远、说话轻时能明显提升识别率
+            try { agc = AutomaticGainControl.create(rec.audioSessionId); agc?.enabled = true } catch (_: Exception) {}
         }
         rec.startRecording()
 
@@ -388,7 +430,8 @@ object CallWsEngine {
     private fun stopAudio() {
         try { aec?.release() } catch (_: Exception) {}
         try { ns?.release() } catch (_: Exception) {}
-        aec = null; ns = null
+        try { agc?.release() } catch (_: Exception) {}
+        aec = null; ns = null; agc = null
         micThread = null
         try { audioRecord?.stop() } catch (_: Exception) {}
         try { audioRecord?.release() } catch (_: Exception) {}
