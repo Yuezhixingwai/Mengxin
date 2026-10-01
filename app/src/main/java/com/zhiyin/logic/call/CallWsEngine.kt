@@ -56,11 +56,8 @@ object CallWsEngine {
 
     val state = MutableStateFlow(UiState())
 
-    private const val API_HOST = "api.zhiyin.zhendeqiang.top"
+    private const val API_HOST = "api.zhiyin.yuezhixingwai.cn"
     private const val WS_HOST = "wss://" + API_HOST + "/ws/call"
-    // 域名解析到了中转层（70.39.201.x），那层不转发 WebSocket 升级头 → 必须直连源站 IP。
-    // 只替换解析结果，SNI / Host / 证书校验仍用域名，所以 TLS 依然安全可信。
-    private const val ORIGIN_IP = "198.44.182.206"
     private const val MIC_RATE = 16000
     private const val OUT_RATE = 24000
 
@@ -186,19 +183,7 @@ object CallWsEngine {
     }
 
     private suspend fun connectWs(context: Context, token: String): Boolean {
-        val directDns = object : Dns {
-            override fun lookup(hostname: String): List<InetAddress> {
-                if (hostname.equals(API_HOST, ignoreCase = true)) {
-                    val list = mutableListOf<InetAddress>()
-                    try { list.add(InetAddress.getByName(ORIGIN_IP)) } catch (_: Exception) {}
-                    try { list.addAll(Dns.SYSTEM.lookup(hostname)) } catch (_: Exception) {}
-                    if (list.isNotEmpty()) return list.distinct()
-                }
-                return Dns.SYSTEM.lookup(hostname)
-            }
-        }
         val client = OkHttpClient.Builder()
-            .dns(directDns)
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS) // 长连接
             .pingInterval(20, TimeUnit.SECONDS)
