@@ -15,6 +15,7 @@ import com.zhiyin.logic.data.MsgRepo
 import com.zhiyin.logic.data.SessionStore
 import com.zhiyin.logic.net.ApiGateway
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -262,23 +263,24 @@ object CallEngine {
             return
         }
         state.value = state.value.copy(phase = Phase.THINKING, subtitle = userText)
-        val sentences = kotlinx.coroutines.channels.Channel<String>(Channel.UNLIMITED)
-
-        // 播放协程：按顺序合成+播放抽出来的句子
-        val speaker = launch(Dispatchers.IO) {
-            for (sent in sentences) {
-                if (barged.get() || interrupted.get()) break
-                val spoken = cleanForSpeech(sent)
-                if (spoken.isEmpty()) continue
-                val f = ttsFile(context, spoken) ?: continue
-                if (barged.get() || interrupted.get()) break
-                state.value = state.value.copy(phase = Phase.SPEAKING, subtitle = spoken)
-                playAndWait(f)
-                if (barged.get() || interrupted.get()) break
-            }
-        }
+        val sentences = Channel<String>(Channel.UNLIMITED)
 
         try {
+            coroutineScope {
+            // 播放协程：按顺序合成+播放抽出来的句子
+            val speaker = launch(Dispatchers.IO) {
+                for (sent in sentences) {
+                    if (barged.get() || interrupted.get()) break
+                    val spoken = cleanForSpeech(sent)
+                    if (spoken.isEmpty()) continue
+                    val f = ttsFile(context, spoken) ?: continue
+                    if (barged.get() || interrupted.get()) break
+                    state.value = state.value.copy(phase = Phase.SPEAKING, subtitle = spoken)
+                    playAndWait(f)
+                    if (barged.get() || interrupted.get()) break
+                }
+            }
+
             withContext(Dispatchers.IO) {
                 val conn = java.net.URL(ApiGateway.ZHIYIN_BASE + "/api/call/chat").openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
@@ -312,13 +314,14 @@ object CallEngine {
                 val rest = buf.toString().trim()
                 if (rest.isNotEmpty()) sentences.trySend(rest)
             }
+            sentences.close()
+            speaker.join()
+            }
         } catch (e: Exception) {
             if (!interrupted.get() && !barged.get()) {
                 state.value = state.value.copy(subtitle = "网络异常: ${e.message}")
             }
         }
-        sentences.close()
-        speaker.join()
     }
 
     /** 剥动作描写/表情/符号，转成适合读出来的口语 */
