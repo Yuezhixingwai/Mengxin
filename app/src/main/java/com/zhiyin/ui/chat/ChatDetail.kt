@@ -39,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Description
@@ -132,6 +133,7 @@ sealed interface Bubble {
     data class Image(val path: String) : Bubble
     data class FileMsg(val name: String, val url: String?) : Bubble
     data class Voice(val path: String, val seconds: Long) : Bubble
+    data class VoiceCall(val seconds: Int) : Bubble
     data class Pat(val text: String) : Bubble
     data class Money(val kind: Kind, val amountText: String, val note: String, val amount: Double, val packetId: Long = 0) : Bubble
 
@@ -146,6 +148,7 @@ fun parseBubble(raw: String): Bubble {
             val parts = body.split("|")
             Bubble.Voice(parts.getOrElse(0) { "" }, parts.getOrElse(1) { "0" }.toLongOrNull() ?: 0L)
         }
+        c.startsWith("[calllog]") -> Bubble.VoiceCall(c.removePrefix("[calllog]").trim().toIntOrNull() ?: 0)
         c.indexOf("[STICKER:") >= 0 || c.indexOf("[CUSTOM_STICKER:") >= 0 -> {
             val plainIdx = c.indexOf("[STICKER:")
             val customIdx = c.indexOf("[CUSTOM_STICKER:")
@@ -226,6 +229,7 @@ fun ChatDetailScreen(
     onOpenSearchSettings: () -> Unit = {},
     onOpenMe: () -> Unit = {},
     onOpenStickerShop: () -> Unit = {},
+    onOpenCall: () -> Unit = {},
 ) {
     val vm: ChatViewModel = viewModel(
         key = "chat_$personaName",
@@ -498,7 +502,7 @@ fun ChatDetailScreen(
                 MiuixTheme.colorScheme.onSurfaceContainerVariant
             },
             actions = {
-                IconButton(onClick = { localToast = "语音通话" }) {
+                IconButton(onClick = onOpenCall) {
                     Icon(Icons.Rounded.Call, contentDescription = "语音通话")
                 }
                 IconButton(onClick = { showChatSettings = true }) {
@@ -856,6 +860,7 @@ private fun BubbleContent(
         is Bubble.Image -> ImageBubble(bubble, onLongPress, onPreviewImage)
         is Bubble.FileMsg -> FileBubble(bubble, onLongPress)
         is Bubble.Voice -> VoiceBubble(bubble, mine, onLongPress)
+        is Bubble.VoiceCall -> VoiceCallBubble(bubble, mine, onLongPress)
         is Bubble.Money -> MoneyBubble(
             bubble = bubble,
             mine = mine,
@@ -1172,6 +1177,39 @@ private fun VoiceBubble(bubble: Bubble.Voice, mine: Boolean, onLongPress: () -> 
                 "${bubble.seconds}\"",
                 fontSize = 14.sp,
                 color = if (mine) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun VoiceCallBubble(bubble: Bubble.VoiceCall, mine: Boolean, onLongPress: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(
+            topStart = if (mine) 18.dp else 6.dp,
+            topEnd = if (mine) 6.dp else 18.dp,
+            bottomStart = 18.dp,
+            bottomEnd = 18.dp,
+        ),
+        color = MiuixTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier
+            .combinedClickable(onClick = {}, onLongClick = onLongPress),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Rounded.CallEnd,
+                contentDescription = "语音通话",
+                tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "语音通话 " + "%02d:%02d".format(bubble.seconds / 60, bubble.seconds % 60),
+                fontSize = 14.sp,
+                color = MiuixTheme.colorScheme.onSurface,
             )
         }
     }

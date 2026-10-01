@@ -145,6 +145,7 @@ fun FavoritesScreen(
                 is com.zhiyin.ui.chat.Bubble.Image -> "[图片]"
                 is com.zhiyin.ui.chat.Bubble.FileMsg -> "[文件] ${bubble.name}"
                 is com.zhiyin.ui.chat.Bubble.Voice -> "[语音] ${bubble.seconds}\""
+                is com.zhiyin.ui.chat.Bubble.VoiceCall -> "[语音通话] ${bubble.seconds}s"
                 is com.zhiyin.ui.chat.Bubble.Pat -> bubble.text
                 is com.zhiyin.ui.chat.Bubble.Money -> bubble.amountText
             }
