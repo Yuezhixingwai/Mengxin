@@ -52,7 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.zhiyin.logic.call.CallEngine
+import com.zhiyin.logic.call.CallWsEngine
 import com.zhiyin.logic.net.ApiGateway
 import com.zhiyin.logic.data.SessionStore
 import com.zhiyin.ui.components.LingXinSheet
@@ -85,10 +85,10 @@ fun CallScreen(
     onEnd: () -> Unit,
 ) {
     val context = LocalContext.current
-    val st by CallEngine.state.collectAsState()
+    val st by CallWsEngine.state.collectAsState()
     val colors = MiuixTheme.colorScheme
 
-    var voiceReady by remember { mutableStateOf(CallEngine.isVoiceConfigured(context, personaName)) }
+    var voiceReady by remember { mutableStateOf(CallWsEngine.isVoiceConfigured(context, personaName)) }
     var started by remember { mutableStateOf(false) }
     var permissionRequested by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
@@ -96,7 +96,7 @@ fun CallScreen(
     fun beginCall() {
         if (started) return
         started = true
-        CallEngine.start(context, personaName, personaDesc)
+        CallWsEngine.start(context, personaName, personaDesc)
     }
 
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -114,13 +114,13 @@ fun CallScreen(
     }
 
     LaunchedEffect(st.phase) {
-        if (st.phase == CallEngine.Phase.ENDED) {
+        if (st.phase == CallWsEngine.Phase.ENDED) {
             delay(400)
             onEnd()
         }
     }
 
-    val connected = st.phase != CallEngine.Phase.IDLE && st.phase != CallEngine.Phase.DIALING && st.phase != CallEngine.Phase.ENDED
+    val connected = st.phase != CallWsEngine.Phase.IDLE && st.phase != CallWsEngine.Phase.DIALING && st.phase != CallWsEngine.Phase.ENDED
     var secs by remember { mutableStateOf(0) }
     LaunchedEffect(connected) {
         if (connected) {
@@ -159,7 +159,7 @@ fun CallScreen(
 
             // 头像 + 状态
             Box(contentAlignment = Alignment.Center) {
-                if (st.phase == CallEngine.Phase.SPEAKING) {
+                if (st.phase == CallWsEngine.Phase.SPEAKING) {
                     Box(
                         Modifier
                             .size((150 + st.level * 36).dp)
@@ -169,7 +169,7 @@ fun CallScreen(
                 Box(
                     Modifier
                         .size(140.dp)
-                        .scale(if (st.phase == CallEngine.Phase.DIALING || st.phase == CallEngine.Phase.GREETING) pulse else 1f)
+                        .scale(if (st.phase == CallWsEngine.Phase.DIALING || st.phase == CallWsEngine.Phase.GREETING) pulse else 1f)
                         .border(2.dp, colors.dividerLine.copy(alpha = 0.6f), CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -179,17 +179,17 @@ fun CallScreen(
             Spacer(Modifier.height(20.dp))
             Text(
                 when {
-                    st.phase == CallEngine.Phase.DIALING -> "正在等待对方接听…"
-                    st.phase == CallEngine.Phase.GREETING -> "已接通"
-                    st.phase == CallEngine.Phase.LISTENING -> "请说话 · 你也可以随时打断对方"
-                    st.phase == CallEngine.Phase.THINKING -> "对方正在思考…"
-                    st.phase == CallEngine.Phase.SPEAKING -> "对方正在说话"
+                    st.phase == CallWsEngine.Phase.DIALING -> "正在等待对方接听…"
+                    st.phase == CallWsEngine.Phase.GREETING -> "已接通"
+                    st.phase == CallWsEngine.Phase.LISTENING -> "请说话 · 你也可以随时打断对方"
+                    st.phase == CallWsEngine.Phase.THINKING -> "对方正在思考…"
+                    st.phase == CallWsEngine.Phase.SPEAKING -> "对方正在说话"
                     else -> fmtSecs(secs)
                 },
                 fontSize = 14.sp,
                 color = colors.onSurfaceVariantSummary,
             )
-            if (st.subtitle.isNotBlank() && (st.phase == CallEngine.Phase.SPEAKING || st.phase == CallEngine.Phase.THINKING || st.phase == CallEngine.Phase.LISTENING)) {
+            if (st.subtitle.isNotBlank() && (st.phase == CallWsEngine.Phase.SPEAKING || st.phase == CallWsEngine.Phase.THINKING || st.phase == CallWsEngine.Phase.LISTENING)) {
                 Spacer(Modifier.height(10.dp))
                 Text(
                     st.subtitle,
@@ -223,18 +223,18 @@ fun CallScreen(
                 CallCtl(
                     icon = if (st.micMuted) Icons.Rounded.MicOff else Icons.Rounded.Mic,
                     label = if (st.micMuted) "已静音" else "静音",
-                ) { if (started) CallEngine.toggleMute() }
+                ) { if (started) CallWsEngine.toggleMute() }
                 CallCtl(
                     icon = Icons.Rounded.GraphicEq,
                     label = "音色",
                 ) { showPicker = true }
-                CallHangup { if (started) CallEngine.hangup() else onEnd() }
+                CallHangup { if (started) CallWsEngine.hangup() else onEnd() }
                 CallCtl(
                     icon = if (speakerOn.value) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff,
                     label = if (speakerOn.value) "免提开" else "免提关",
                 ) {
                     speakerOn.value = !speakerOn.value
-                    CallEngine.toggleSpeaker(speakerOn.value)
+                    CallWsEngine.toggleSpeaker(speakerOn.value)
                 }
             }
             Spacer(Modifier.height(30.dp))
@@ -246,7 +246,7 @@ fun CallScreen(
                 personaName = personaName,
                 onDismiss = { showPicker = false },
                 onSelected = { voiceId ->
-                    CallEngine.saveVoice(context, personaName, voiceId)
+                    CallWsEngine.saveVoice(context, personaName, voiceId)
                     voiceReady = true
                     showPicker = false
                 },
@@ -314,7 +314,7 @@ private fun VoicePickerSheet(
     val scope = rememberCoroutineScope()
     val colors = MiuixTheme.colorScheme
     var voices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
-    var selected by remember { mutableStateOf(CallEngine.currentVoice(context, personaName) ?: "") }
+    var selected by remember { mutableStateOf(CallWsEngine.currentVoice(context, personaName) ?: "") }
     var loading by remember { mutableStateOf(true) }
     var cloning by remember { mutableStateOf(false) }
     var tip by remember { mutableStateOf("") }
