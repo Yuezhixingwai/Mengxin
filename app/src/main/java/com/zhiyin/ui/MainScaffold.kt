@@ -63,6 +63,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -132,7 +133,9 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
@@ -238,6 +241,49 @@ fun MainScaffold(appVm: AppViewModel) {
         navForward = false
     }
 
+    // ===== 语音通话解锁门槛（邀请 2 位新用户）=====
+    val scope = rememberCoroutineScope()
+    var callGateLoading by remember { mutableStateOf(false) }
+    var callGate by remember { mutableStateOf<CallGateInfo?>(null) }
+
+    fun openCallGuarded(name: String, desc: String, id: Int) {
+        if (callGateLoading) return
+        callGateLoading = true
+        scope.launch {
+            val resp = withContext(Dispatchers.IO) {
+                try {
+                    com.zhiyin.logic.net.ApiGateway.requestSync(
+                        com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE + "/api/invite/call-gate",
+                        "GET", null, com.zhiyin.data.AppSession.token()
+                    )
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            callGateLoading = false
+            var allowed = true // 接口异常时放行，不挡正常使用
+            var info: CallGateInfo? = null
+            try {
+                val json = JSONObject(resp ?: "")
+                allowed = json.optBoolean("allowed", true)
+                if (!allowed) {
+                    info = CallGateInfo(
+                        validCount = json.optInt("valid_count", 0),
+                        required = json.optInt("required", 2),
+                        code = json.optString("code", ""),
+                    )
+                }
+            } catch (_: Exception) {
+            }
+            if (info == null) {
+                push(Overlay.Call(name, desc, id))
+            } else {
+                callGate = info
+            }
+        }
+    }
+    // ===== 语音通话解锁门槛 end =====
+
     LaunchedEffect(overlayStack.size, currentTab) {
         if (overlay == null) chatListVm.refresh()
     }
@@ -276,6 +322,24 @@ fun MainScaffold(appVm: AppViewModel) {
                 } catch (_: Exception) {
                     appVm.showToast("无法打开下载链接")
                 }
+            },
+        )
+    }
+
+    // 语音通话解锁弹窗：邀请 2 位新用户才能使用
+    callGate?.let { gate ->
+        LingXinDialog(
+            onDismiss = { callGate = null },
+            title = "语音通话暂未解锁",
+            text = "邀请 ${gate.required} 位新用户注册并填写你的邀请码，即可解锁语音通话。" +
+                    "（新朋友注册 3 天内有效，双方各得 5 灵心币）\n" +
+                    "当前进度 ${gate.validCount}/${gate.required}" +
+                    if (gate.code.isNotEmpty()) "\n\n我的邀请码：${gate.code}" else "",
+            confirmText = "去邀请",
+            dismissText = "下次再说",
+            onConfirm = {
+                callGate = null
+                push(Overlay.Invite)
             },
         )
     }
@@ -365,7 +429,7 @@ fun MainScaffold(appVm: AppViewModel) {
                             currentTab = 3
                         },
                         onOpenStickerShop = { push(Overlay.StickerShop) },
-                        onOpenCall = { push(Overlay.Call(o.name, o.desc, o.id)) },
+                        onOpenCall = { openCallGuarded(o.name, o.desc, o.id) },
                     )
                     is Overlay.Call -> com.zhiyin.ui.call.CallScreen(
                         personaName = o.name,
@@ -665,6 +729,13 @@ fun MainScaffold(appVm: AppViewModel) {
 private data class QuickActionItem(
     val title: String,
     val icon: ImageVector,
+)
+
+// 语音通话解锁门槛信息（服务端 /api/invite/call-gate 返回）
+private data class CallGateInfo(
+    val validCount: Int,
+    val required: Int,
+    val code: String,
 )
 
 @Composable

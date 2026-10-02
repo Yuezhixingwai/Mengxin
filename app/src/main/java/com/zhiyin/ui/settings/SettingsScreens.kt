@@ -49,6 +49,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Redeem
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -1595,6 +1596,21 @@ fun AboutScreen(appVm: AppViewModel, onBack: () -> Unit, onOpenAboutUs: () -> Un
                                 contentDescription = null,
                                 tint = colors.onSurfaceVariantActions,
                             )
+                        },
+                    )
+                }
+                CardContainer {
+                    IconActionRow(
+                        icon = Icons.Rounded.VerifiedUser,
+                        title = "闽ICP备2026037209号-2A",
+                        onClick = {
+                            try {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://beian.miit.gov.cn/"))
+                                )
+                            } catch (_: Exception) {
+                                appVm.showToast("无法打开浏览器")
+                            }
                         },
                     )
                 }
