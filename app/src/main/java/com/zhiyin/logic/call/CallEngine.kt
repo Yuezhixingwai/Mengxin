@@ -9,7 +9,6 @@ import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
-import android.os.Build
 import android.util.Base64
 import com.zhiyin.logic.data.MsgRepo
 import com.zhiyin.logic.data.SessionStore
@@ -411,10 +410,11 @@ object CallEngine {
             val done = CompletableDeferred<Boolean>()
             playDone = done
             val p = MediaPlayer()
-            // USAGE_MEDIA：确保走媒体音量/外放，避免 USAGE_VOICE_COMMUNICATION 被路由到听筒导致听不见
+            // USAGE_VOICE_COMMUNICATION：外放（isSpeakerphoneOn=true 已强制开启）时走通话通路，
+            // 系统 AEC 才能拿到回声参考把它消掉；用 USAGE_MEDIA 播放会让 AI 的声音被麦克风录回去。
             p.setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
@@ -463,7 +463,7 @@ object CallEngine {
                 val p = MediaPlayer()
                 p.setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -490,9 +490,10 @@ object CallEngine {
         if (rec == null) rec = tryInitAudioRecord(MediaRecorder.AudioSource.MIC, minBuf)
         if (rec == null) return
         audioRecord = rec
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && rec.state == AudioRecord.STATE_INITIALIZED) {
-            try { aec = AcousticEchoCanceler.create(rec.audioSessionId) } catch (_: Exception) {}
-            try { ns = NoiseSuppressor.create(rec.audioSessionId) } catch (_: Exception) {}
+        if (rec.state == AudioRecord.STATE_INITIALIZED) {
+            // 注意：以前只 create 没 enabled —— 等于没开回声消除，外放时 AI 的声音会被录回去
+            try { aec = AcousticEchoCanceler.create(rec.audioSessionId); aec?.enabled = true } catch (_: Exception) {}
+            try { ns = NoiseSuppressor.create(rec.audioSessionId); ns?.enabled = true } catch (_: Exception) {}
         }
         rec.startRecording()
 

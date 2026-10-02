@@ -427,6 +427,7 @@ fun ChatDetailScreen(
                         onOpenMe = onOpenMe,
                         onOpenMoney = { m, t -> moneyDetail = m to t },
                         onPreviewImage = { previewTarget = it },
+                        onOpenCall = onOpenCall,
                     )
                 }
             }
@@ -750,6 +751,7 @@ private fun MessageRow(
     onOpenMe: () -> Unit,
     onOpenMoney: (Bubble.Money, Long) -> Unit = { _, _ -> },
     onPreviewImage: (PreviewTarget) -> Unit = {},
+    onOpenCall: () -> Unit = {},
 ) {
     val mine = msg.role == "user"
     val isPat = bubble is Bubble.Pat
@@ -800,6 +802,7 @@ private fun MessageRow(
                         onLongPress = onLongPress,
                         onOpenMoney = { m -> onOpenMoney(m, msg.time) },
                         onPreviewImage = onPreviewImage,
+                        onOpenCall = onOpenCall,
                     )
                 }
                 if (mine) {
@@ -828,6 +831,7 @@ private fun BubbleContent(
     onLongPress: () -> Unit,
     onOpenMoney: (Bubble.Money) -> Unit = {},
     onPreviewImage: (PreviewTarget) -> Unit = {},
+    onOpenCall: () -> Unit = {},
 ) {
     val bubbleColor =
         if (mine) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh
@@ -860,7 +864,7 @@ private fun BubbleContent(
         is Bubble.Image -> ImageBubble(bubble, onLongPress, onPreviewImage)
         is Bubble.FileMsg -> FileBubble(bubble, onLongPress)
         is Bubble.Voice -> VoiceBubble(bubble, mine, onLongPress)
-        is Bubble.VoiceCall -> VoiceCallBubble(bubble, mine, onLongPress)
+        is Bubble.VoiceCall -> VoiceCallBubble(bubble, mine, onLongPress, onOpenCall)
         is Bubble.Money -> MoneyBubble(
             bubble = bubble,
             mine = mine,
@@ -1183,7 +1187,7 @@ private fun VoiceBubble(bubble: Bubble.Voice, mine: Boolean, onLongPress: () -> 
 }
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VoiceCallBubble(bubble: Bubble.VoiceCall, mine: Boolean, onLongPress: () -> Unit) {
+private fun VoiceCallBubble(bubble: Bubble.VoiceCall, mine: Boolean, onLongPress: () -> Unit, onOpenCall: () -> Unit = {}) {
     Surface(
         shape = RoundedCornerShape(
             topStart = if (mine) 18.dp else 6.dp,
@@ -1193,24 +1197,31 @@ private fun VoiceCallBubble(bubble: Bubble.VoiceCall, mine: Boolean, onLongPress
         ),
         color = MiuixTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
-            .combinedClickable(onClick = {}, onLongClick = onLongPress),
+            .combinedClickable(onClick = onOpenCall, onLongClick = onLongPress),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                Icons.Rounded.CallEnd,
+                Icons.Rounded.Call,
                 contentDescription = "语音通话",
-                tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                tint = MiuixTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),
             )
             Spacer(Modifier.width(8.dp))
-            Text(
-                "语音通话 " + "%02d:%02d".format(bubble.seconds / 60, bubble.seconds % 60),
-                fontSize = 14.sp,
-                color = MiuixTheme.colorScheme.onSurface,
-            )
+            Column {
+                Text(
+                    "语音通话",
+                    fontSize = 14.sp,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "轻触回拨 · 通话 " + "%02d:%02d".format(bubble.seconds / 60, bubble.seconds % 60),
+                    fontSize = 11.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                )
+            }
         }
     }
 }

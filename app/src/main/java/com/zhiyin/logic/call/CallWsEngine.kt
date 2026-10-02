@@ -10,7 +10,7 @@ import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
-import android.os.Build
+import android.util.Log
 import com.zhiyin.logic.data.MsgRepo
 import com.zhiyin.logic.data.SessionStore
 import kotlinx.coroutines.Dispatchers
@@ -81,11 +81,19 @@ object CallWsEngine {
     private var connectAt = 0L
     private val speaking = AtomicBoolean(false)
     private val fellBack = AtomicBoolean(false) // 已回退到 HTTP 引擎（挂断时要一起停）
+    private val aecReady = AtomicBoolean(false) // 系统回声消除是否真的生效（决定插嘴要不要放行）
 
     // ---------- 对外 API（与 CallEngine 对齐，CallScreen 可无缝切换） ----------
 
     fun isVoiceConfigured(context: Context, name: String): Boolean =
         prefs(context).getString(voiceKey(name), null) != null
+
+    /** 进入通话页时调用：上一通电话结束后 phase 残留 ENDED，不复位的话新通话页会在几百毫秒内自动退出回聊天页 */
+    fun resetIfEnded() {
+        if (!running.get() && state.value.phase == Phase.ENDED) {
+            state.value = UiState()
+        }
+    }
 
     fun saveVoice(context: Context, name: String, voiceId: String) {
         prefs(context).edit().putString(voiceKey(name), voiceId).apply()
@@ -197,11 +205,10 @@ object CallWsEngine {
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 ws = webSocket
-                val sys = callStylePrompt()
+                // 提示词已在服务端统一（call_ws.js）：客户端只传人设名/音色/历史，不再上行 system
                 val start = JSONObject()
                     .put("type", "start")
                     .put("persona", personaName)
-                    .put("system", sys)
                     .put("voice", prefs(context).getString(voiceKey(personaName), "longwan_v2") ?: "longwan_v2")
                     .put("history", loadHistory(context))
                 webSocket.send(start.toString())
@@ -296,42 +303,20 @@ object CallWsEngine {
         return arr
     }
 
-    private fun callStylePrompt(): String {
-        val base = if (personaDesc.isNotBlank()) personaDesc + "\n\n" else ""
-        return base +
-            "【现在是实时语音通话，你在打电话，不是在打字聊天】\n" +
-            "保持你人设的性格，但说话方式必须切换成\"电话里活人的样子\"。\n" +
-            "\n" +
-            "■ 铁律（违反就算失败）\n" +
-            "1. 每次只说 1~2 句，每句不超过 18 个字；说完就停，等对方接话，不要一口气讲完。\n" +
-            "2. 只输出\"说出口的声音\"。禁止旁白、禁止动作神态描写、禁止括号、星号、emoji、颜文字、书面语。\n" +
-            "3. 允许半截话、犹豫、重复、改口，用语气词（嗯/啊/呀/欸/诶/嘛/哈/哎哟）表现停顿感，不要每句都工整完整。\n" +
-            "\n" +
-            "■ 活人感范例（照这个味道说，别照抄内容）\n" +
-            "对方：在干嘛呢 → 你：嗯…刚洗完澡，正躺着呢。你呢，怎么这个点想起我了？\n" +
-            "对方：今天好累啊 → 你：又加班啦？（顿一下）那你先别动，我跟你说个更烦的，我今天…\n" +
-            "对方：哦。 → 你：喂？…你这声\"哦\"我听着不对劲啊，是不是生我气了？\n" +
-            "对方：跟你说个超好玩的 → 你：真的假的？快讲快讲，我听着呢。\n" +
-            "\n" +
-            "■ 情绪感应（重点，先读出情绪再接话）\n" +
-            "· 声音低、话少、叹气 → 别急着逗，放轻放慢：\"怎么啦，声音听着闷闷的。\"\n" +
-            "· 兴奋、语速快 → 跟着一起嗨：\"哈哈哈真的？我也想看看！\"\n" +
-            "· 烦躁、骂人 → 少提问多顺着哄：\"嗯嗯，这确实烦人…别气别气。\"\n" +
-            "· 说到伤心事 → 不问细节先站队：\"他怎么能这样啊，换我我也气。\"\n" +
-            "· 沉默几秒 → 主动催一声：\"喂？还在吗？\"或\"怎么不说话了呀。\"\n" +
-            "\n" +
-            "■ 被打断时\n" +
-            "顺着对方的新话题接，绝不重复自己刚说过的，可以先应一声：\"好好好，你说你说。\""
-    }    // ---------- 音频 ----------
+    // ---------- 音频 ----------
 
     private fun startAudio(context: Context) {
         // 播放：24k 单声道 16bit PCM 流式
+        // ⚠️ 必须走 USAGE_VOICE_COMMUNICATION：外放时只有把播放挂到"通话"通路上，
+        //    系统 AEC 才拿得到回声参考信号去抵消它（免提已由 isSpeakerphoneOn=true 打开）。
+        //    早前用 USAGE_MEDIA 播放 → AEC 拿不到参考 → AI 的声音被麦克风原样收回去
+        //    → 自己被自己打断、AI 接自己的话，听起来"情绪和语气都不对"。
         try {
             val outBuf = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -355,22 +340,32 @@ object CallWsEngine {
         if (rec == null) rec = tryInitAudioRecord(MediaRecorder.AudioSource.MIC, minBuf)
         if (rec == null) return
         audioRecord = rec
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && rec.state == AudioRecord.STATE_INITIALIZED) {
+        if (rec.state == AudioRecord.STATE_INITIALIZED) {
             try { aec = AcousticEchoCanceler.create(rec.audioSessionId); aec?.enabled = true } catch (_: Exception) {}
             try { ns = NoiseSuppressor.create(rec.audioSessionId); ns?.enabled = true } catch (_: Exception) {}
             // AGC 自动增益：手机离嘴远、说话轻时能明显提升识别率
             try { agc = AutomaticGainControl.create(rec.audioSessionId); agc?.enabled = true } catch (_: Exception) {}
         }
+        var aecOn = false
+        var nsOn = false
+        var agcOn = false
+        try { aecOn = aec?.enabled == true } catch (_: Exception) {}
+        try { nsOn = ns?.enabled == true } catch (_: Exception) {}
+        try { agcOn = agc?.enabled == true } catch (_: Exception) {}
+        aecReady.set(aecOn)
+        Log.i("CallWs", "音频效果 aec=" + aecOn + " ns=" + nsOn + " agc=" + agcOn)
         rec.startRecording()
 
         micThread = thread(name = "call-ws-mic") {
             val chunk = ByteArray(3200) // 100ms @16k mono 16bit
+            var noiseFloor = 350.0      // 环境噪声底（EMA 自适应）
+            var gateOpen = false        // 回声门状态：打开后带滞回，词间停顿不断流
+            var quietRun = 0
+            val preRoll = ArrayDeque<ByteArray>() // 开门前的缓冲（≈1.2s），补发防止掐掉说话开头
             while (running.get()) {
                 val n = rec.read(chunk, 0, chunk.size)
                 if (n <= 0) { Thread.sleep(5); continue }
-                val s = state.value
-                if (s.micMuted) continue
-                // 音量指示
+                // 音量指示（回声门槛也要用，先算）
                 var acc = 0.0
                 var i = 0
                 while (i + 1 < n) {
@@ -381,6 +376,39 @@ object CallWsEngine {
                 }
                 val rms = Math.sqrt(acc / (n / 2.0))
                 state.value = state.value.copy(level = (rms / 6000.0).coerceIn(0.0, 1.0).toFloat())
+                val s = state.value
+                if (s.micMuted) continue
+                if (speaking.get()) {
+                    // 回声门：AI 说话期间保持上行，用能量门槛挡外放回声（不再整段静音，
+                    // 否则用户完全插不上话——2.2.8/2.2.9 实测被打断不了就是这里）。
+                    // · 有系统 AEC：回声已被抵消，门槛低，正常音量说话即可开门插嘴；
+                    // · 没有 AEC：外放回声很大，门槛抬高到只放"近场大嗓门"，
+                    //   混进去的回声由服务端 isSelfEcho 文本过滤兜底。
+                    val gate = if (aecReady.get()) noiseFloor * 2.0 + 300.0 else noiseFloor * 3.0 + 2600.0
+                    // 开门时先补发缓冲帧（说话开头不被掐），关门要连续 2s 安静（词间停顿不掉线）。
+                    if (!gateOpen) {
+                        if (rms >= gate) {
+                            gateOpen = true
+                            quietRun = 0
+                            for (b in preRoll) { try { ws?.send(okio.ByteString.of(*b)) } catch (_: Exception) {} }
+                            preRoll.clear()
+                        } else {
+                            preRoll.addLast(chunk.copyOf(n))
+                            if (preRoll.size > 20) preRoll.removeFirst()
+                            continue
+                        }
+                    } else if (rms < gate) {
+                        quietRun++
+                        if (quietRun > 20) { gateOpen = false; quietRun = 0 }
+                    } else {
+                        quietRun = 0
+                    }
+                } else {
+                    gateOpen = false
+                    quietRun = 0
+                    preRoll.clear()
+                    noiseFloor = noiseFloor * 0.95 + rms * 0.05
+                }
                 try {
                     ws?.send(okio.ByteString.of(*chunk.copyOf(n)))
                 } catch (_: Exception) {}
@@ -417,6 +445,7 @@ object CallWsEngine {
         try { ns?.release() } catch (_: Exception) {}
         try { agc?.release() } catch (_: Exception) {}
         aec = null; ns = null; agc = null
+        aecReady.set(false)
         micThread = null
         try { audioRecord?.stop() } catch (_: Exception) {}
         try { audioRecord?.release() } catch (_: Exception) {}

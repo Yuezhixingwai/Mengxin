@@ -277,6 +277,22 @@ public class MsgRepo {
                     } catch (Exception e) {
                         android.util.Log.w("MsgRepo", "heal local failed: " + e.getMessage());
                     }
+                    // 清理历史版本混入本地的通话转写记录（开头带【语音通话】/（语音通话）累积前缀）；
+                    // 通话转写只留在 9005 记忆库（platform=call_ws），聊天列表不再显示
+                    try {
+                        java.util.regex.Pattern _tagPat = java.util.regex.Pattern.compile("^(?:\\s*[（(【]\\s*语音通话\\s*[）)】])+\\s*");
+                        JSONArray _cleaned = new JSONArray();
+                        for (int i = 0; i < localArr.length(); i++) {
+                            JSONObject o = localArr.optJSONObject(i);
+                            if (o == null) continue;
+                            String _c = o.optString("content", "");
+                            if (_tagPat.matcher(_c == null ? "" : _c).find()) { changed = true; continue; }
+                            _cleaned.put(o);
+                        }
+                        if (_cleaned.length() != localArr.length()) localArr = _cleaned;
+                    } catch (Exception e) {
+                        android.util.Log.w("MsgRepo", "clean call tags failed: " + e.getMessage());
+                    }
                     if (remoteMsgsRef != null && remoteMsgsRef.length() > 0) {
                         try {
                             List<String> knownRoles = new ArrayList<>();
@@ -289,6 +305,8 @@ public class MsgRepo {
                                 if ("assistant".equals(rRole)) rRole = "ai";
                                 String rContent = rm.optString("content", "");
                                 if (rContent == null || rContent.trim().isEmpty()) continue;
+                                // 语音通话转写（9005 platform=call_ws）只留在记忆库，不进客户端聊天列表
+                                if ("call_ws".equals(rm.optString("platform", ""))) continue;
                                 remoteList.add(new RemoteMsg(rRole, rContent, rm.optLong("time", 0)));
                             }
                             int ri = 0;
