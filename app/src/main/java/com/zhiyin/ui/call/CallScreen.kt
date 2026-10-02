@@ -110,6 +110,8 @@ fun CallScreen(
         }
     }
     LaunchedEffect(Unit) {
+        // 先清掉上一通电话残留的 ENDED 状态，否则本页会在几百毫秒内自动退出回聊天页
+        CallWsEngine.resetIfEnded()
         if (!voiceReady) showPicker = true
     }
 
