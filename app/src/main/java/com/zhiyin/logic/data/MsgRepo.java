@@ -14,9 +14,95 @@ public class MsgRepo {
     private static final Object sLock = new Object();
     private static final int MAX_REMOTE_AI_RUN = 6;
     private static final int MIN_TAIL_MIRROR_LEN = 6;
+    // 每个会话本地最多保留的消息条数：防止 SharedPreferences 单键无限膨胀导致 OOM/ANR 闪退
+    private static final int MAX_MSGS_PER_SESSION = 500;
 
     public static void setActiveSession(String sid) { activeSessionId = sid; }
     public static String getActiveSession() { return activeSessionId; }
+
+    /** 只保留最近 MAX_MSGS_PER_SESSION 条，淘汰最老的 */
+    private static JSONArray trimTail(JSONArray arr) {
+        try {
+            if (arr.length() <= MAX_MSGS_PER_SESSION) return arr;
+            JSONArray out = new JSONArray();
+            for (int i = arr.length() - MAX_MSGS_PER_SESSION; i < arr.length(); i++) out.put(arr.get(i));
+            return out;
+        } catch (Exception e) {
+            return arr;
+        }
+    }
+
+    private static android.content.SharedPreferences lastPrefs(Context ctx) {
+        return ctx.getSharedPreferences("zhiyin_last", 0);
+    }
+
+    /**
+     * 写入轻量预览档（最后一条内容/时间 + 未读数），供消息列表 O(1) 读取，
+     * 避免列表每条消息都全量解析所有会话的大 JSON。
+     */
+    private static void updatePreview(Context ctx, String sid, JSONArray arr) {
+        try {
+            JSONObject last = arr.length() > 0 ? arr.optJSONObject(arr.length() - 1) : null;
+            JSONObject pv = new JSONObject();
+            pv.put("c", last == null ? "" : last.optString("content", ""));
+            pv.put("t", last == null ? 0L : last.optLong("time", 0));
+            int unread = 0;
+            for (int i = arr.length() - 1; i >= 0; i--) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                if ("ai".equals(o.optString("role")) && !o.optBoolean("read", false)) {
+                    unread++;
+                } else if ("user".equals(o.optString("role"))) {
+                    break;
+                }
+            }
+            pv.put("u", unread);
+            lastPrefs(ctx).edit().putString(sid, pv.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    /** 会话末尾信息（列表预览/未读用）：优先读轻量预览档，读不到再回退全量解析 */
+    public static final class LastInfo {
+        public final String content;
+        public final long time;
+        public final int unread;
+        public final boolean hasMessages;
+
+        public LastInfo(String c, long t, int u, boolean h) {
+            content = c;
+            time = t;
+            unread = u;
+            hasMessages = h;
+        }
+    }
+
+    public static LastInfo getLastInfo(Context ctx, String sid) {
+        try {
+            String raw = lastPrefs(ctx).getString(sid, null);
+            if (raw != null) {
+                JSONObject pv = new JSONObject(raw);
+                return new LastInfo(pv.optString("c", ""), pv.optLong("t", 0), pv.optInt("u", 0), true);
+            }
+        } catch (Exception ignored) {}
+        try {
+            JSONArray arr = new JSONArray(ctx.getSharedPreferences("zhiyin_msgs", 0).getString(sid, "[]"));
+            if (arr.length() == 0) return new LastInfo("", 0, 0, false);
+            JSONObject last = arr.optJSONObject(arr.length() - 1);
+            int unread = 0;
+            for (int i = arr.length() - 1; i >= 0; i--) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                if ("ai".equals(o.optString("role")) && !o.optBoolean("read", false)) {
+                    unread++;
+                } else if ("user".equals(o.optString("role"))) {
+                    break;
+                }
+            }
+            return new LastInfo(last == null ? "" : last.optString("content", ""),
+                    last == null ? 0 : last.optLong("time", 0), unread, true);
+        } catch (Exception ignored) {}
+        return new LastInfo("", 0, 0, false);
+    }
 
     public static void add(Context ctx, String sid, String role, String content) {
         try {
@@ -29,7 +115,9 @@ public class MsgRepo {
                 o.put("time", System.currentTimeMillis());
                 o.put("read", sid.equals(activeSessionId));
                 arr.put(o);
+                arr = trimTail(arr);
                 sp.edit().putString(sid, arr.toString()).apply();
+                updatePreview(ctx, sid, arr);
                 syncToMemoryService(ctx, sid, role, content, o.optLong("time", 0));
             }
         } catch (Exception ignored) {}
@@ -86,7 +174,9 @@ public class MsgRepo {
                 }
                 if (changed) {
                     healLocalDupes(arr);
+                    arr = trimTail(arr);
                     sp.edit().putString(sid, arr.toString()).apply();
+                    updatePreview(ctx, sid, arr);
                 }
                 return changed;
             }
@@ -348,7 +438,9 @@ public class MsgRepo {
                             for (int i = 0; i < localArr.length(); i++) list.add(localArr.getJSONObject(i));
                             java.util.Collections.sort(list, (a, b) -> Long.compare(a.optLong("time", 0), b.optLong("time", 0)));
                             for (JSONObject o : list) sorted.put(o);
-                            sp.edit().putString(sessionId, sorted.toString()).apply();
+                            JSONArray trimmed = trimTail(sorted);
+                            sp.edit().putString(sessionId, trimmed.toString()).apply();
+                            updatePreview(fCtx, sessionId, trimmed);
                         } catch (Exception e) {
                             android.util.Log.w("MsgRepo", "sort local failed: " + e.getMessage());
                         }
@@ -535,7 +627,17 @@ public class MsgRepo {
     public static List<String[]> getAll(Context ctx, String sid) {
         List<String[]> list = new ArrayList<>();
         try {
-            JSONArray arr = new JSONArray(ctx.getSharedPreferences("zhiyin_msgs", 0).getString(sid, "[]"));
+            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
+            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+            if (arr.length() > MAX_MSGS_PER_SESSION) {
+                // 存量膨胀会话：读的时候顺手瘦身，防止旧版本留下的超大键继续拖垮内存
+                JSONArray trimmed = trimTail(arr);
+                synchronized (sLock) {
+                    sp.edit().putString(sid, trimmed.toString()).apply();
+                }
+                updatePreview(ctx, sid, trimmed);
+                arr = trimmed;
+            }
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject o = arr.getJSONObject(i);
                 list.add(new String[]{o.getString("role"), o.getString("content"), String.valueOf(o.optLong("time", 0))});
@@ -547,6 +649,7 @@ public class MsgRepo {
     public static void delete(Context ctx, String sid) {
         synchronized (sLock) {
             ctx.getSharedPreferences("zhiyin_msgs", 0).edit().remove(sid).apply();
+            lastPrefs(ctx).edit().remove(sid).apply();
         }
         try {
             final Context fCtx = ctx;
@@ -576,7 +679,9 @@ public class MsgRepo {
                 for (int i = 0; i < arr.length(); i++) {
                     if (i != index) newArr.put(arr.get(i));
                 }
-                sp.edit().putString(sid, newArr.toString()).apply();
+                JSONArray trimmed = trimTail(newArr);
+                sp.edit().putString(sid, trimmed.toString()).apply();
+                updatePreview(ctx, sid, trimmed);
             }
         } catch (Exception ignored) {}
     }
@@ -596,7 +701,9 @@ public class MsgRepo {
                 newObj.put("content", content);
                 newObj.put("time", newTime);
                 arr.put(index, newObj);
-                sp.edit().putString(sid, arr.toString()).apply();
+                JSONArray trimmed = trimTail(arr);
+                sp.edit().putString(sid, trimmed.toString()).apply();
+                updatePreview(ctx, sid, trimmed);
             }
             final String fRole = role;
             final String fContent = content;
@@ -653,7 +760,9 @@ public class MsgRepo {
                         newArr.put(arr.get(i));
                     }
                 }
-                sp.edit().putString(sid, newArr.toString()).apply();
+                JSONArray trimmed = trimTail(newArr);
+                sp.edit().putString(sid, trimmed.toString()).apply();
+                updatePreview(ctx, sid, trimmed);
             }
             new Thread(() -> {
                 try {
@@ -682,6 +791,10 @@ public class MsgRepo {
     }
 
     public static int getUnreadCount(Context ctx, String sid) {
+        try {
+            String raw = lastPrefs(ctx).getString(sid, null);
+            if (raw != null) return new JSONObject(raw).optInt("u", 0);
+        } catch (Exception ignored) {}
         try {
             JSONArray arr = new JSONArray(ctx.getSharedPreferences("zhiyin_msgs", 0).getString(sid, "[]"));
             int count = 0;
@@ -712,7 +825,9 @@ public class MsgRepo {
                     }
                 }
                 if (changed) {
-                    sp.edit().putString(sid, arr.toString()).apply();
+                    JSONArray trimmed = trimTail(arr);
+                    sp.edit().putString(sid, trimmed.toString()).apply();
+                    updatePreview(ctx, sid, trimmed);
                 }
             }
         } catch (Exception ignored) {}
@@ -742,7 +857,9 @@ public class MsgRepo {
                         break;
                     }
                 }
-                sp.edit().putString(sid, arr.toString()).apply();
+                JSONArray trimmed = trimTail(arr);
+                sp.edit().putString(sid, trimmed.toString()).apply();
+                updatePreview(ctx, sid, trimmed);
             }
         } catch (Exception ignored) {}
     }
