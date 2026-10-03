@@ -151,7 +151,10 @@ public class ChatEngine {
                 }
 
                 List<String[]> history = MsgRepo.getAll(ctx, sid);
-                for (String[] msg : history) {
+                // 只带最近30条上下文给服务端（服务端最终也只取最近19条非system消息），防止全量历史撑爆请求体
+                int hStart = Math.max(0, history.size() - 30);
+                for (int hi = hStart; hi < history.size(); hi++) {
+                    String[] msg = history.get(hi);
                     String clean = cleanHistoryContent(ctx, msg[1]);
                     if (clean == null) continue;
                     String role = msg[0].equals("ai") ? "assistant" : msg[0];
@@ -318,7 +321,7 @@ public class ChatEngine {
                     sys.put("content", p.desc);
                     messages.put(sys);
                 }
-                for (int i = 0; i < position && i < all.size(); i++) {
+                for (int i = Math.max(0, position - 30); i < position && i < all.size(); i++) {
                     String[] m = all.get(i);
                     String clean = cleanHistoryContent(ctx, m[1]);
                     if (clean == null) continue;
@@ -806,7 +809,9 @@ public class ChatEngine {
                 messages.put(sys);
 
                 List<String[]> history = MsgRepo.getAll(ctx, sid);
-                for (String[] msg : history) {
+                int gStart = Math.max(0, history.size() - 30);
+                for (int gi = gStart; gi < history.size(); gi++) {
+                    String[] msg = history.get(gi);
                     if (msg[1] != null && !msg[1].isEmpty() && !msg[1].startsWith("[错误]")) {
                         String role = msg[0].equals("ai") ? "assistant" : msg[0];
                         JSONObject m = new JSONObject();

@@ -19,8 +19,8 @@ android {
         applicationId = "com.zhiyin"
         minSdk = 24
         targetSdk = 36
-        versionCode = 17
-        versionName = "2.2.11"
+        versionCode = 18
+        versionName = "2.2.12"
         val buildBatch = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
         buildConfigField("String", "BUILD_BATCH", "\"$buildBatch\"")
 

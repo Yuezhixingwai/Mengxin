@@ -66,11 +66,10 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
                 val out = mutableListOf<UConv>()
                 for (f in friends) {
                     val sid = "persona_${f.name}"
-                    val msgs = MsgRepo.getAll(ctx, sid)
+                    // 轻量预览档：只取最后一条+未读数，避免每条消息都全量解析所有会话的大 JSON
+                    val info = MsgRepo.getLastInfo(ctx, sid)
                     val previewDefault = "打个招呼开始聊天吧"
-                    val lastRaw = msgs.lastOrNull()?.get(1)
-                    val preview = if (lastRaw != null) ChatEngine.previewText(lastRaw) else previewDefault
-                    val time = msgs.lastOrNull()?.get(2)?.toLongOrNull() ?: 0L
+                    val preview = if (info.hasMessages) ChatEngine.previewText(info.content) else previewDefault
                     out.add(
                         UConv(
                             key = sid,
@@ -80,18 +79,17 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
                             persona = f.persona ?: "",
                             mute = f.mute,
                             lastMessage = preview.take(30),
-                            time = time,
-                            unread = MsgRepo.getUnreadCount(ctx, sid),
-                            hasMessages = msgs.isNotEmpty(),
+                            time = info.time,
+                            unread = info.unread,
+                            hasMessages = info.hasMessages,
                         )
                     )
                 }
                 for (g in GroupManager.getGroupChats(ctx)) {
                     val sid = g[0]
                     val name = g[1]
-                    val msgs = MsgRepo.getAll(ctx, sid)
-                    val lastRaw = msgs.lastOrNull()?.get(1)
-                    val preview = if (lastRaw != null) ChatEngine.previewText(lastRaw) else "群聊"
+                    val info = MsgRepo.getLastInfo(ctx, sid)
+                    val preview = if (info.hasMessages) ChatEngine.previewText(info.content) else "群聊"
                     out.add(
                         UConv(
                             key = sid,
@@ -101,9 +99,9 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
                             persona = "",
                             mute = false,
                             lastMessage = preview.take(30),
-                            time = msgs.lastOrNull()?.get(2)?.toLongOrNull() ?: 0L,
-                            unread = MsgRepo.getUnreadCount(ctx, sid),
-                            hasMessages = msgs.isNotEmpty(),
+                            time = info.time,
+                            unread = info.unread,
+                            hasMessages = info.hasMessages,
                         )
                     )
                 }
