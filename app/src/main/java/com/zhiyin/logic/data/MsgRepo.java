@@ -98,8 +98,11 @@ public class MsgRepo {
                     break;
                 }
             }
-            return new LastInfo(last == null ? "" : last.optString("content", ""),
+            LastInfo info = new LastInfo(last == null ? "" : last.optString("content", ""),
                     last == null ? 0 : last.optLong("time", 0), unread, true);
+            // 回填预览缓存：老版本升级后首次走 fallback 全量解析，之后不再重复解析
+            updatePreview(ctx, sid, arr);
+            return info;
         } catch (Exception ignored) {}
         return new LastInfo("", 0, 0, false);
     }
