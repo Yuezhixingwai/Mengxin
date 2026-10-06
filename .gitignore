@@ -13,8 +13,3 @@
 .externalNativeBuild
 .cxx
 local.properties
-
-# 签名与密钥：一律不入库（2026-10-06 发现密钥曾随公开仓库暴露）
-keystore.properties
-*.keystore
-*.jks

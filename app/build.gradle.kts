@@ -29,15 +29,10 @@ android {
 
     signingConfigs {
         create("release") {
-            // 口令不入库：优先读本地 keystore.properties（已 gitignore），其次读环境变量 ZHIYIN_KS_PASSWORD
-            val ksProps = java.util.Properties().apply {
-                val f = rootProject.file("keystore.properties")
-                if (f.exists()) f.inputStream().use { load(it) }
-            }
             storeFile = file("zhiyin-release.keystore")
-            storePassword = ksProps.getProperty("storePassword") ?: System.getenv("ZHIYIN_KS_PASSWORD") ?: ""
-            keyAlias = ksProps.getProperty("keyAlias") ?: "zhiyin"
-            keyPassword = ksProps.getProperty("keyPassword") ?: System.getenv("ZHIYIN_KS_PASSWORD") ?: ""
+            storePassword = "ZhiYin@2026"
+            keyAlias = "zhiyin"
+            keyPassword = "ZhiYin@2026"
         }
     }
 
