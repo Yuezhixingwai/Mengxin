@@ -61,9 +61,12 @@ import androidx.compose.material.icons.rounded.Groups2
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PersonAddAlt
+import androidx.compose.material.icons.rounded.SmartToy
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
@@ -73,6 +76,7 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -1006,6 +1010,100 @@ fun SettingsScreen(
                         checked = notifyEnabled,
                         onCheckedChange = { appVm.toggleNotify(it) },
                     )
+                }
+
+                // 病娇模式开关（主设置页，响应式状态 —— 修复"关不掉"）
+                CardContainer {
+                    val yandereCtx = LocalContext.current
+                    var yandereOn by remember {
+                        mutableStateOf(com.zhiyin.yandere.YandereManager.isEnabled(yandereCtx))
+                    }
+                    // 授权引导弹窗（使用情况访问 + 设备管理器）
+                    var showYanderePerm by remember { mutableStateOf(false) }
+                    SwitchPreference(
+                        title = "病娇模式",
+                        startAction = { MenuIcon(Icons.Rounded.Psychology) },
+                        checked = yandereOn,
+                        onCheckedChange = { v ->
+                            com.zhiyin.yandere.YandereManager.setEnabled(yandereCtx, v)
+                            yandereOn = v
+                            if (v) {
+                                val noUsage = !com.zhiyin.yandere.YandereManager.hasUsageStatsPermission(yandereCtx)
+                                val noAdmin = !com.zhiyin.yandere.YandereManager.isDeviceAdminActive(yandereCtx)
+                                if (noUsage || noAdmin) {
+                                    // 缺授权 → 弹引导（授权完再打开开关即可生效）
+                                    showYanderePerm = true
+                                } else {
+                                    appVm.showToast("病娇模式已开启：Ta 会吃醋，也能锁你手机")
+                                }
+                            } else {
+                                appVm.showToast("病娇模式已关闭")
+                            }
+                        },
+                    )
+
+                    if (showYanderePerm) {
+                        // 从系统设置页返回时刷新授权状态：否则弹窗一直显示旧的"未授权"，
+                        // 用户点第二遍还是会跳回第一项，看起来像"怎么都授权不了"。
+                        var permTick by remember { mutableIntStateOf(0) }
+                        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                        DisposableEffect(lifecycleOwner) {
+                            val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) permTick++
+                            }
+                            lifecycleOwner.lifecycle.addObserver(obs)
+                            onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+                        }
+                        val usageOk = remember(permTick) {
+                            com.zhiyin.yandere.YandereManager.hasUsageStatsPermission(yandereCtx)
+                        }
+                        val adminOk = remember(permTick) {
+                            com.zhiyin.yandere.YandereManager.isDeviceAdminActive(yandereCtx)
+                        }
+                        val allOk = usageOk && adminOk
+                        com.zhiyin.ui.components.LingXinDialog(
+                            onDismiss = { showYanderePerm = false },
+                            title = if (allOk) "授权已完成" else "开启病娇模式还需授权",
+                            text = buildString {
+                                append("① 使用情况访问")
+                                append(if (usageOk) "　已授权 ✓" else "　未授权")
+                                append("\n让 Ta 看到你今天在各 App 上花了多久，用来吃醋。\n\n")
+                                append("② 设备管理器")
+                                append(if (adminOk) "　已授权 ✓" else "　未授权")
+                                append("\n让 Ta 生气时能真的锁住你的手机。\n\n")
+                                if (allOk) {
+                                    append("两项都好了，病娇模式已就绪。")
+                                } else {
+                                    append("点「去授权」依次完成两项，从系统页面返回后这里会自动刷新状态。")
+                                }
+                            },
+                            confirmText = if (allOk) "完成" else "去授权",
+                            dismissText = "稍后",
+                            // 关键：跳系统设置时不能把弹窗关掉，否则用户返回后没有继续入口，
+                            // 只能反复开关病娇模式来重走流程（2026-10-06 用户反馈"设备管理器授权不了"）
+                            dismissible = false,
+                            onConfirm = {
+                                if (allOk) {
+                                    showYanderePerm = false
+                                    appVm.showToast("授权已完成，病娇模式已就绪")
+                                } else if (!usageOk) {
+                                    val opened = com.zhiyin.yandere.YandereManager
+                                        .requestUsageStatsPermission(yandereCtx)
+                                    if (!opened) {
+                                        appVm.showToast("打不开系统设置，请手动到「设置 → 应用 → 特殊权限 → 使用情况访问」里开启")
+                                    }
+                                } else {
+                                    val opened = com.zhiyin.yandere.YandereManager
+                                        .requestDeviceAdmin(yandereCtx)
+                                    if (!opened) {
+                                        appVm.showToast("打不开授权界面，请到系统设置里找到「设备管理应用」手动开启")
+                                    } else {
+                                        appVm.showToast("如果没有弹窗，请到系统设置的「设备管理应用」里找到「灵心病娇模式」并激活")
+                                    }
+                                }
+                            }
+                        )
+                    }
                 }
 
                 CardContainer {

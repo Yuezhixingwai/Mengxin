@@ -175,6 +175,12 @@ public class ChatEngine {
                 body.put("self_upload", 1);
                 body.put("raw_user_content", text);
 
+                // 病娇模式：带 yandere_mode + 使用情况上下文（AI据此吃醋）
+                if (com.zhiyin.yandere.YandereManager.INSTANCE.isEnabled(ctx)) {
+                    body.put("yandere_mode", true);
+                    body.put("yandere_context", com.zhiyin.yandere.YandereManager.INSTANCE.buildYandereContext(ctx));
+                }
+
                 String resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/chat", body.toString(), fToken);
                 JSONObject json = new JSONObject(resp);
 
@@ -190,6 +196,16 @@ public class ChatEngine {
                 String content = "";
                 if (json.has("choices"))
                     content = json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "");
+
+                // 病娇模式：检测AI回复中的 [LOCK] 标记 → 锁屏 → 清除标记
+                if (com.zhiyin.yandere.YandereManager.INSTANCE.isEnabled(ctx) && content.contains("[LOCK]")) {
+                    kotlin.Pair<String, Boolean> lockResult = com.zhiyin.yandere.YandereManager.INSTANCE.processLockMarker(content);
+                    content = lockResult.getFirst();
+                    if (lockResult.getSecond()) {
+                        com.zhiyin.yandere.YandereManager.INSTANCE.lockScreen(ctx);
+                    }
+                }
+
                 String reasoningContent = json.optString("reasoning_content", "");
 
                 boolean voiceMode = prefs(ctx).getBoolean("voice_reply_enabled", false);

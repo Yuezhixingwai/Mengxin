@@ -3,6 +3,16 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 应用内更新：APK 下载完成后直接拉起系统安装界面（用户仍需在系统弹窗点一次"安装"） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!--
+      病娇模式：读取各 App 使用时长。
+      必须在 Manifest 里声明——不声明的话，系统「使用情况访问」列表里**根本不会出现本应用**，
+      用户会怎么找都找不到"灵心"，也就永远授权不了（2026-10-06 修复的真实问题）。
+    -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -54,6 +64,21 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_provider_paths" />
         </provider>
+
+        <!-- 病娇模式：设备管理器接收器，仅用于 lockNow() 锁屏（用户可随时撤销） -->
+        <receiver
+            android:name=".yandere.YandereDeviceAdminReceiver"
+            android:label="灵心病娇模式"
+            android:description="@string/yandere_device_admin_desc"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_yandere" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

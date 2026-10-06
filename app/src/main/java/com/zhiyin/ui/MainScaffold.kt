@@ -305,26 +305,23 @@ fun MainScaffold(appVm: AppViewModel) {
         } catch (_: Exception) {
         }
     }
-    updateInfo?.let { uv ->
-        com.zhiyin.ui.components.LingXinDialog(
-            onDismiss = {
-                updateInfo = null
-                _upCtx.getSharedPreferences("zhiyin_update", 0).edit().putString("dismissed", uv.version).apply()
-            },
-            title = "发现新版本 ${uv.version}",
-            text = uv.changelog.ifEmpty { "修复已知问题，优化使用体验" },
-            confirmText = "去下载",
-            dismissText = "以后再说",
-            onConfirm = {
-                updateInfo = null
-                try {
-                    _upCtx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uv.apkUrl)))
-                } catch (_: Exception) {
-                    appVm.showToast("无法打开下载链接")
-                }
-            },
-        )
-    }
+    // 更新弹窗 → 应用内下载 → 直接拉起系统安装（逻辑见 AppUpdater / UpdatePrompt）
+    var updateStarted by remember { mutableStateOf(false) }
+    com.zhiyin.ui.components.UpdatePrompt(
+        info = updateInfo,
+        onDismiss = {
+            val dismissedVersion = updateInfo?.version
+            updateInfo = null
+            // 只有"以后再说"才记入忽略列表；点了"立即更新"的取消/失败不该影响下次提醒
+            if (!updateStarted && dismissedVersion != null) {
+                _upCtx.getSharedPreferences("zhiyin_update", 0).edit()
+                    .putString("dismissed", dismissedVersion).apply()
+            }
+            updateStarted = false
+        },
+        toast = { appVm.showToast(it) },
+        onStartDownload = { updateStarted = true },
+    )
 
     // 语音通话解锁弹窗：邀请 2 位新用户才能使用
     callGate?.let { gate ->

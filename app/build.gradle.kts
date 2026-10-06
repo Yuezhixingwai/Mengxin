@@ -19,8 +19,8 @@ android {
         applicationId = "com.zhiyin"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20
-        versionName = "2.2.14"
+        versionCode = 24
+        versionName = "2.3.3"
         val buildBatch = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
         buildConfigField("String", "BUILD_BATCH", "\"$buildBatch\"")
 
@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.material.icons.extended)
+    // 灵心助手（手机操控）：Shizuku 进阶通道（授权 Provider + 客户端 API + 低层 aidl）
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

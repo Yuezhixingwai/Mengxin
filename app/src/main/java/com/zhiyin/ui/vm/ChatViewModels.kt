@@ -193,7 +193,17 @@ class ChatViewModel(
 
     override fun onSendingChanged(sending: Boolean) {}
 
-    fun send(text: String) = ChatEngine.sendText(getApplication(), persona, text)
+    private var lastSentText: String? = null
+    private var lastSentAt = 0L
+
+    fun send(text: String) {
+        // 防手抖/重组重复提交：同一句话 800ms 内只发一次（不同内容不受影响）
+        val now = System.currentTimeMillis()
+        if (text == lastSentText && now - lastSentAt < 800L) return
+        lastSentText = text
+        lastSentAt = now
+        ChatEngine.sendText(getApplication(), persona, text)
+    }
 
     fun sendSticker(marker: String) = ChatEngine.sendText(getApplication(), persona, marker)
 

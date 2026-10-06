@@ -51,6 +51,7 @@ import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect

@@ -43,6 +43,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Business
+import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Palette
@@ -86,6 +87,7 @@ import com.zhiyin.ui.EmptyHint
 import com.zhiyin.ui.RubberBandBox
 import com.zhiyin.ui.components.ImageCropperDialog
 import com.zhiyin.ui.components.LingXinDialog
+import com.zhiyin.ui.components.UpdatePrompt
 import com.zhiyin.ui.components.UserAvatar
 import com.zhiyin.ui.vm.AppViewModel
 import kotlinx.coroutines.flow.drop
@@ -1619,26 +1621,14 @@ fun AboutScreen(appVm: AppViewModel, onBack: () -> Unit, onOpenAboutUs: () -> Un
         }
     }
 
-    if (newVersion != null) {
-        val v = newVersion!!
-        LingXinDialog(
-            onDismiss = { newVersion = null },
-            title = "发现新版本 ${v.version}",
-            text = v.changelog.ifEmpty { "修复已知问题，优化使用体验" },
-            confirmText = "去下载",
-            dismissText = "以后再说",
-            onConfirm = {
-                newVersion = null
-                try {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse(v.apkUrl))
-                    )
-                } catch (_: Exception) {
-                    appVm.showToast("无法打开下载链接")
-                }
-            },
-        )
-    }
+    // 发现新版本 → 应用内下载 → 直接拉起系统安装（逻辑见 AppUpdater / UpdatePrompt）
+    // 下载进度弹窗统一由根脚手架渲染，这里只负责"发现新版本"这一步，避免同一个弹窗叠两层
+    UpdatePrompt(
+        info = newVersion,
+        onDismiss = { newVersion = null },
+        toast = { appVm.showToast(it) },
+        showProgressDialogs = false,
+    )
     if (upToDate) {
         LingXinDialog(
             onDismiss = { upToDate = false },

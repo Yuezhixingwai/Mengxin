@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 病娇模式设备管理器描述（系统设备管理器页展示给用户） -->
+    <string name="yandere_device_admin_desc">仅用于"病娇模式"下 AI 触发的一键锁屏（lockNow）。可在系统设置 - 设备管理器中随时停用。</string>
+</resources>

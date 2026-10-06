@@ -15,7 +15,50 @@ public class MsgRepo {
     private static final int MAX_REMOTE_AI_RUN = 6;
     private static final int MIN_TAIL_MIRROR_LEN = 6;
     // 每个会话本地最多保留的消息条数：防止 SharedPreferences 单键无限膨胀导致 OOM/ANR 闪退
-    private static final int MAX_MSGS_PER_SESSION = 500;
+    private static final int MAX_MSGS_PER_SESSION = 200;
+
+    // ===== 消息读写性能改造（2026-10-06）=====
+    // 原先 add() 在调用线程（主线程）做「读全量 JSON → 解析 → 追加 → 全量序列化 → 写回 XML」，
+    // 会话越长越慢，表现为「发消息卡 + 越用越卡、重启才好」。
+    // 现在主线程只改内存数组，落盘交给单线程串行异步执行，并在 80ms 内合并连续写入。
+    private static final java.util.concurrent.ConcurrentHashMap<String, JSONArray> sMem = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ExecutorService sIo = java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    /** 取会话消息数组：优先内存缓存，未命中才读盘并缓存。需在 sLock 内调用，返回值为缓存引用（可直接改）。 */
+    private static JSONArray loadArr(Context ctx, String sid) {
+        JSONArray cached = sMem.get(sid);
+        if (cached != null) return cached;
+        JSONArray arr;
+        try {
+            arr = new JSONArray(ctx.getSharedPreferences("zhiyin_msgs", 0).getString(sid, "[]"));
+        } catch (Exception e) { arr = new JSONArray(); }
+        sMem.put(sid, arr);
+        return arr;
+    }
+
+    /** 更新内存缓存并异步落盘（80ms 内的连续写入合并成一次）。需在 sLock 内调用。 */
+    private static void storeArr(Context ctx, String sid, JSONArray arr) {
+        sMem.put(sid, arr);
+        final Context app = ctx.getApplicationContext();
+        final String fSid = sid;
+        sIo.execute(new Runnable() {
+            @Override public void run() {
+                try {
+                    Thread.sleep(80);
+                    String json;
+                    synchronized (sLock) {
+                        JSONArray latest = sMem.get(fSid);
+                        if (latest == null) return;
+                        json = latest.toString();
+                    }
+                    app.getSharedPreferences("zhiyin_msgs", 0).edit().putString(fSid, json).apply();
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    /** 丢弃某会话的内存缓存（直接改盘的路径调用）。 */
+    private static void dropMem(String sid) { if (sid != null) sMem.remove(sid); }
 
     public static void setActiveSession(String sid) { activeSessionId = sid; }
     public static String getActiveSession() { return activeSessionId; }
@@ -85,7 +128,8 @@ public class MsgRepo {
             }
         } catch (Exception ignored) {}
         try {
-            JSONArray arr = new JSONArray(ctx.getSharedPreferences("zhiyin_msgs", 0).getString(sid, "[]"));
+            JSONArray arr;
+            synchronized (sLock) { arr = loadArr(ctx, sid); }
             if (arr.length() == 0) return new LastInfo("", 0, 0, false);
             JSONObject last = arr.optJSONObject(arr.length() - 1);
             int unread = 0;
@@ -109,20 +153,22 @@ public class MsgRepo {
 
     public static void add(Context ctx, String sid, String role, String content) {
         try {
+            JSONObject o = new JSONObject();
+            o.put("role", role);
+            o.put("content", content);
+            o.put("time", System.currentTimeMillis());
+            o.put("read", sid.equals(activeSessionId));
+            JSONArray snapshot;
             synchronized (sLock) {
-                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
-                JSONObject o = new JSONObject();
-                o.put("role", role);
-                o.put("content", content);
-                o.put("time", System.currentTimeMillis());
-                o.put("read", sid.equals(activeSessionId));
+                JSONArray arr = loadArr(ctx, sid);
                 arr.put(o);
                 arr = trimTail(arr);
-                sp.edit().putString(sid, arr.toString()).apply();
-                updatePreview(ctx, sid, arr);
-                syncToMemoryService(ctx, sid, role, content, o.optLong("time", 0));
+                storeArr(ctx, sid, arr);
+                snapshot = arr;
             }
+            // 预览档是轻量键，仍同步写；消息本体落盘已在后台单线程执行
+            updatePreview(ctx, sid, snapshot);
+            syncToMemoryService(ctx, sid, role, content, o.optLong("time", 0));
         } catch (Exception ignored) {}
     }
 
@@ -148,8 +194,7 @@ public class MsgRepo {
         if (msgs == null || msgs.isEmpty()) return false;
         try {
             synchronized (sLock) {
-                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                JSONArray arr = loadArr(ctx, sid);
                 List<String> roles = new ArrayList<>();
                 List<String> norms = new ArrayList<>();
                 collectNorms(arr, roles, norms);
@@ -178,7 +223,7 @@ public class MsgRepo {
                 if (changed) {
                     healLocalDupes(arr);
                     arr = trimTail(arr);
-                    sp.edit().putString(sid, arr.toString()).apply();
+                    storeArr(ctx, sid, arr);
                     updatePreview(ctx, sid, arr);
                 }
                 return changed;
@@ -356,13 +401,7 @@ public class MsgRepo {
                 boolean changed = false;
                 org.json.JSONArray remoteMsgsRef = remoteMsgs;
                 synchronized (sLock) {
-                    SharedPreferences sp = fCtx.getSharedPreferences("zhiyin_msgs", 0);
-                    JSONArray localArr = new JSONArray();
-                    try {
-                        localArr = new JSONArray(sp.getString(sessionId, "[]"));
-                    } catch (org.json.JSONException e) {
-                        android.util.Log.w("MsgRepo", "parse local failed: " + e.getMessage());
-                    }
+                    JSONArray localArr = loadArr(fCtx, sessionId);
                     try {
                         if (healLocalDupes(localArr)) {
                             changed = true;
@@ -442,7 +481,7 @@ public class MsgRepo {
                             java.util.Collections.sort(list, (a, b) -> Long.compare(a.optLong("time", 0), b.optLong("time", 0)));
                             for (JSONObject o : list) sorted.put(o);
                             JSONArray trimmed = trimTail(sorted);
-                            sp.edit().putString(sessionId, trimmed.toString()).apply();
+                            storeArr(fCtx, sessionId, trimmed);
                             updatePreview(fCtx, sessionId, trimmed);
                         } catch (Exception e) {
                             android.util.Log.w("MsgRepo", "sort local failed: " + e.getMessage());
@@ -630,17 +669,18 @@ public class MsgRepo {
     public static List<String[]> getAll(Context ctx, String sid) {
         List<String[]> list = new ArrayList<>();
         try {
-            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-            JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
-            if (arr.length() > MAX_MSGS_PER_SESSION) {
-                // 存量膨胀会话：读的时候顺手瘦身，防止旧版本留下的超大键继续拖垮内存
-                JSONArray trimmed = trimTail(arr);
-                synchronized (sLock) {
-                    sp.edit().putString(sid, trimmed.toString()).apply();
+            JSONArray arr;
+            boolean trimmedNow = false;
+            synchronized (sLock) {
+                arr = loadArr(ctx, sid);
+                if (arr.length() > MAX_MSGS_PER_SESSION) {
+                    // 存量膨胀会话：读的时候顺手瘦身，防止旧版本留下的超大键继续拖垮内存
+                    arr = trimTail(arr);
+                    storeArr(ctx, sid, arr);
+                    trimmedNow = true;
                 }
-                updatePreview(ctx, sid, trimmed);
-                arr = trimmed;
             }
+            if (trimmedNow) updatePreview(ctx, sid, arr);
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject o = arr.getJSONObject(i);
                 list.add(new String[]{o.getString("role"), o.getString("content"), String.valueOf(o.optLong("time", 0))});
@@ -651,6 +691,7 @@ public class MsgRepo {
 
     public static void delete(Context ctx, String sid) {
         synchronized (sLock) {
+            dropMem(sid);
             ctx.getSharedPreferences("zhiyin_msgs", 0).edit().remove(sid).apply();
             lastPrefs(ctx).edit().remove(sid).apply();
         }
@@ -675,15 +716,14 @@ public class MsgRepo {
     public static void deleteAt(Context ctx, String sid, int index) {
         try {
             synchronized (sLock) {
-                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                JSONArray arr = loadArr(ctx, sid);
                 if (index < 0 || index >= arr.length()) return;
                 JSONArray newArr = new JSONArray();
                 for (int i = 0; i < arr.length(); i++) {
                     if (i != index) newArr.put(arr.get(i));
                 }
                 JSONArray trimmed = trimTail(newArr);
-                sp.edit().putString(sid, trimmed.toString()).apply();
+                storeArr(ctx, sid, trimmed);
                 updatePreview(ctx, sid, trimmed);
             }
         } catch (Exception ignored) {}
@@ -694,8 +734,7 @@ public class MsgRepo {
             final long oldTime;
             final long newTime;
             synchronized (sLock) {
-                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                JSONArray arr = loadArr(ctx, sid);
                 if (index < 0 || index >= arr.length()) return;
                 oldTime = arr.optJSONObject(index).optLong("time", 0);
                 newTime = System.currentTimeMillis();
@@ -705,7 +744,7 @@ public class MsgRepo {
                 newObj.put("time", newTime);
                 arr.put(index, newObj);
                 JSONArray trimmed = trimTail(arr);
-                sp.edit().putString(sid, trimmed.toString()).apply();
+                storeArr(ctx, sid, trimmed);
                 updatePreview(ctx, sid, trimmed);
             }
             final String fRole = role;
@@ -735,13 +774,12 @@ public class MsgRepo {
     public static void replaceWithSegments(Context ctx, final String sid, int index, final String role, List<String> segments) {
         try {
             if (segments == null || segments.isEmpty()) return;
-            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
             final long oldTime;
             final long baseTime;
             final List<String> segContents = new ArrayList<>();
             final List<Long> segTimes = new ArrayList<>();
             synchronized (sLock) {
-                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                JSONArray arr = loadArr(ctx, sid);
                 if (index < 0 || index >= arr.length()) return;
                 oldTime = arr.optJSONObject(index).optLong("time", 0);
                 baseTime = System.currentTimeMillis();
@@ -764,7 +802,7 @@ public class MsgRepo {
                     }
                 }
                 JSONArray trimmed = trimTail(newArr);
-                sp.edit().putString(sid, trimmed.toString()).apply();
+                storeArr(ctx, sid, trimmed);
                 updatePreview(ctx, sid, trimmed);
             }
             new Thread(() -> {
@@ -799,7 +837,8 @@ public class MsgRepo {
             if (raw != null) return new JSONObject(raw).optInt("u", 0);
         } catch (Exception ignored) {}
         try {
-            JSONArray arr = new JSONArray(ctx.getSharedPreferences("zhiyin_msgs", 0).getString(sid, "[]"));
+            JSONArray arr;
+            synchronized (sLock) { arr = loadArr(ctx, sid); }
             int count = 0;
             for (int i = arr.length() - 1; i >= 0; i--) {
                 JSONObject o = arr.getJSONObject(i);
@@ -817,8 +856,7 @@ public class MsgRepo {
     public static void markAllRead(Context ctx, String sid) {
         try {
             synchronized (sLock) {
-                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                JSONArray arr = loadArr(ctx, sid);
                 boolean changed = false;
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject o = arr.getJSONObject(i);
@@ -829,7 +867,7 @@ public class MsgRepo {
                 }
                 if (changed) {
                     JSONArray trimmed = trimTail(arr);
-                    sp.edit().putString(sid, trimmed.toString()).apply();
+                    storeArr(ctx, sid, trimmed);
                     updatePreview(ctx, sid, trimmed);
                 }
             }
@@ -838,9 +876,10 @@ public class MsgRepo {
 
     public static void markAllSessionsRead(Context ctx) {
         try {
-            SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-            java.util.Map<String, ?> all = sp.getAll();
-            for (String key : all.keySet()) {
+            java.util.Set<String> keys = new java.util.HashSet<>();
+            keys.addAll(ctx.getSharedPreferences("zhiyin_msgs", 0).getAll().keySet());
+            keys.addAll(sMem.keySet()); // 内存缓存里可能有尚未落盘的新会话
+            for (String key : keys) {
                 if (key.startsWith("persona_") || key.startsWith("group_")) {
                     markAllRead(ctx, key);
                 }
@@ -851,8 +890,7 @@ public class MsgRepo {
     public static void updateLast(Context ctx, String sid, String oldPrefix, String newContent) {
         try {
             synchronized (sLock) {
-                SharedPreferences sp = ctx.getSharedPreferences("zhiyin_msgs", 0);
-                JSONArray arr = new JSONArray(sp.getString(sid, "[]"));
+                JSONArray arr = loadArr(ctx, sid);
                 for (int i = arr.length() - 1; i >= 0; i--) {
                     JSONObject o = arr.getJSONObject(i);
                     if (o.optString("content", "").startsWith(oldPrefix)) {
@@ -861,7 +899,7 @@ public class MsgRepo {
                     }
                 }
                 JSONArray trimmed = trimTail(arr);
-                sp.edit().putString(sid, trimmed.toString()).apply();
+                storeArr(ctx, sid, trimmed);
                 updatePreview(ctx, sid, trimmed);
             }
         } catch (Exception ignored) {}
