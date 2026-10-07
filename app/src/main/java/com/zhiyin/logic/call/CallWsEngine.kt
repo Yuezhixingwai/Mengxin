@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Dns
@@ -63,6 +64,7 @@ object CallWsEngine {
 
     private val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + Job())
     private var sessionJob: Job? = null
+    private var fallbackStateJob: Job? = null
     private val running = AtomicBoolean(false)
 
     private var okHttp: OkHttpClient? = null
@@ -79,6 +81,7 @@ object CallWsEngine {
     private var personaName = ""
     private var personaDesc = ""
     private var connectAt = 0L
+    private var startupRetryCount = 0
     private val speaking = AtomicBoolean(false)
     private val fellBack = AtomicBoolean(false) // 已回退到 HTTP 引擎（挂断时要一起停）
     private val aecReady = AtomicBoolean(false) // 系统回声消除是否真的生效（决定插嘴要不要放行）
@@ -112,6 +115,9 @@ object CallWsEngine {
         personaName = name
         personaDesc = desc
         connectAt = 0L
+        startupRetryCount = 0
+        fellBack.set(false)
+        fallbackStateJob?.cancel()
         state.value = UiState(phase = Phase.CONNECTING)
         sessionJob = scope.launch { runSession(context.applicationContext) }
     }
@@ -126,14 +132,23 @@ object CallWsEngine {
         cleanup()
         // 兼容模式（HTTP 引擎）在跑时必须一起停掉，否则挂断后它还在继续说
         if (fellBack.get()) { try { CallEngine.hangup() } catch (_: Exception) {} }
+        fallbackStateJob?.cancel()
     }
 
     fun toggleMute() {
+        if (fellBack.get()) {
+            CallEngine.toggleMute()
+            return
+        }
         val s = state.value
         state.value = s.copy(micMuted = !s.micMuted)
     }
 
     fun toggleSpeaker(on: Boolean) {
+        if (fellBack.get()) {
+            CallEngine.toggleSpeaker(on)
+            return
+        }
         try { audioManager?.isSpeakerphoneOn = on } catch (_: Exception) {}
     }
 
@@ -151,6 +166,7 @@ object CallWsEngine {
     private suspend fun runSession(context: Context) {
         val token = SessionStore(context).getToken()
         if (token.isNullOrEmpty()) {
+            running.set(false)
             state.value = state.value.copy(phase = Phase.ENDED, subtitle = "未登录")
             return
         }
@@ -168,11 +184,7 @@ object CallWsEngine {
             val ok = connectWs(context, token)
             if (!ok) {
                 // 兜底：HTTP 模式
-                fellBack.set(true)
-                state.value = state.value.copy(mode = "http", subtitle = "已切换兼容模式")
-                stopAudio()
-                running.set(false)
-                CallEngine.start(context, personaName, personaDesc)
+                startHttpFallback(context, "实时连接不可用，已切换兼容模式")
                 return
             }
             // 主循环只负责计时；交互全部由 WS 事件驱动
@@ -184,9 +196,11 @@ object CallWsEngine {
             }
         } catch (e: Exception) {
             if (running.get()) {
-                state.value = state.value.copy(phase = Phase.ENDED, subtitle = "通话异常: ${e.message}")
                 running.set(false)
+                state.value = state.value.copy(phase = Phase.ENDED, subtitle = "通话异常: ${e.message}")
             }
+            stopAudio()
+            cleanup()
         }
     }
 
@@ -252,10 +266,24 @@ object CallWsEngine {
                 connectAt = System.currentTimeMillis()
                 state.value = state.value.copy(phase = Phase.GREETING, subtitle = "已接通")
                 // 人设先开口
-                val greet = JSONObject()
-                    .put("type", "text")
-                    .put("text", "[电话刚刚接通] 请你先开口，像真人接电话一样自然地先说第一句话，简短口语。")
-                webSocket.send(greet.toString())
+                sendGreeting(webSocket)
+                // 部分华为/鸿蒙设备能完成 WS 握手，但服务端首句事件迟迟不返回。
+                // 两次催发仍没有任何回复事件时，切到 HTTP 兼容引擎继续通话。
+                scope.launch {
+                    repeat(2) {
+                        delay(5_000)
+                        if (!running.get() || state.value.phase != Phase.GREETING) return@launch
+                        startupRetryCount++
+                        state.value = state.value.copy(
+                            subtitle = "对方那边有点延迟，正在重新接通，请稍候…"
+                        )
+                        sendGreeting(webSocket)
+                    }
+                    delay(5_000)
+                    if (running.get() && state.value.phase == Phase.GREETING) {
+                        startHttpFallback(context, "实时语音无响应，已切换兼容模式")
+                    }
+                }
             }
             "asr_partial" -> {
                 state.value = state.value.copy(subtitle = "你说：${m.optString("text")}")
@@ -283,7 +311,58 @@ object CallWsEngine {
                 state.value = state.value.copy(phase = Phase.LISTENING, subtitle = "好，你先说～")
             }
             "error" -> {
-                state.value = state.value.copy(subtitle = "出错了：" + m.optString("message"))
+                val duringGreeting = state.value.phase == Phase.GREETING ||
+                        (connectAt > 0L && System.currentTimeMillis() - connectAt < 15_000L)
+                if (duringGreeting && startupRetryCount < 2 && running.get()) {
+                    startupRetryCount++
+                    state.value = state.value.copy(phase = Phase.GREETING, subtitle = "刚刚没接上，正在重试…")
+                    scope.launch {
+                        delay(700L * startupRetryCount)
+                        if (running.get()) sendGreeting(webSocket)
+                    }
+                } else {
+                    // 单次模型/语音服务失败不应结束整通电话，回到聆听态即可继续说。
+                    speaking.set(false)
+                    state.value = state.value.copy(phase = Phase.LISTENING, subtitle = "刚才没听清，请再说一次")
+                }
+            }
+        }
+    }
+
+    private fun sendGreeting(webSocket: WebSocket) {
+        val greet = JSONObject()
+            .put("type", "text")
+            .put("text", "[电话刚刚接通] 请你先开口，像真人接电话一样自然地先说第一句话，简短口语。")
+        try { webSocket.send(greet.toString()) } catch (_: Exception) {}
+    }
+
+    private fun startHttpFallback(context: Context, message: String) {
+        if (!fellBack.compareAndSet(false, true)) return
+        try { ws?.close(1000, "fallback") } catch (_: Exception) {}
+        stopAudio()
+        running.set(false)
+        state.value = state.value.copy(phase = Phase.DIALING, mode = "http", subtitle = message)
+        CallEngine.start(context, personaName, personaDesc)
+        fallbackStateJob?.cancel()
+        fallbackStateJob = scope.launch {
+            CallEngine.state.collect { http ->
+                val phase = when (http.phase) {
+                    CallEngine.Phase.IDLE -> Phase.IDLE
+                    CallEngine.Phase.DIALING -> Phase.DIALING
+                    CallEngine.Phase.GREETING -> Phase.GREETING
+                    CallEngine.Phase.LISTENING -> Phase.LISTENING
+                    CallEngine.Phase.THINKING -> Phase.THINKING
+                    CallEngine.Phase.SPEAKING -> Phase.SPEAKING
+                    CallEngine.Phase.ENDED -> Phase.ENDED
+                }
+                state.value = UiState(
+                    phase = phase,
+                    seconds = http.seconds,
+                    subtitle = http.subtitle,
+                    level = http.level,
+                    micMuted = http.micMuted,
+                    mode = "http",
+                )
             }
         }
     }

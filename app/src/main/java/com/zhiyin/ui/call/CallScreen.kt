@@ -1,8 +1,10 @@
 package com.zhiyin.ui.call
 
 import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -85,6 +87,8 @@ fun CallScreen(
     onEnd: () -> Unit,
 ) {
     val context = LocalContext.current
+    // 必须在订阅状态前同步清掉上一通残留的 ENDED，避免旧状态安排一次延迟返回。
+    remember(personaName) { CallWsEngine.resetIfEnded(); true }
     val st by CallWsEngine.state.collectAsState()
     val colors = MiuixTheme.colorScheme
 
@@ -92,33 +96,50 @@ fun CallScreen(
     var started by remember { mutableStateOf(false) }
     var permissionRequested by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
+    var endingByUser by remember { mutableStateOf(false) }
+    var callError by remember { mutableStateOf<String?>(null) }
 
     fun beginCall() {
         if (started) return
+        callError = null
         started = true
         CallWsEngine.start(context, personaName, personaDesc)
     }
 
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) beginCall() else onEnd()
+        permissionRequested = false
+        if (granted) beginCall()
+        else callError = "需要麦克风权限才能进行语音通话，请授权后重试"
     }
 
-    LaunchedEffect(voiceReady) {
-        if (voiceReady && !started && !permissionRequested) {
+    fun requestPermissionAndStart() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            beginCall()
+        } else if (!permissionRequested) {
             permissionRequested = true
             permLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
+
+    LaunchedEffect(voiceReady) {
+        if (voiceReady && !started && !permissionRequested) {
+            requestPermissionAndStart()
+        }
+    }
     LaunchedEffect(Unit) {
-        // 先清掉上一通电话残留的 ENDED 状态，否则本页会在几百毫秒内自动退出回聊天页
-        CallWsEngine.resetIfEnded()
         if (!voiceReady) showPicker = true
     }
 
-    LaunchedEffect(st.phase) {
+    LaunchedEffect(st.phase, endingByUser) {
         if (st.phase == CallWsEngine.Phase.ENDED) {
-            delay(400)
-            onEnd()
+            if (endingByUser) {
+                delay(250)
+                if (CallWsEngine.state.value.phase == CallWsEngine.Phase.ENDED) onEnd()
+            } else if (started) {
+                callError = st.subtitle.ifBlank { "通话连接已结束，请重试" }
+                started = false
+                CallWsEngine.resetIfEnded()
+            }
         }
     }
 
@@ -202,12 +223,16 @@ fun CallScreen(
                     maxLines = 2,
                 )
             }
+            callError?.let {
+                Spacer(Modifier.height(10.dp))
+                Text(it, fontSize = 12.sp, color = colors.error, textAlign = TextAlign.Center)
+            }
             Spacer(Modifier.weight(1.1f))
 
             // 未开始通话时的引导按钮（音色弹层可随时关闭，关了从这里再进）
             if (!started) {
                 Button(
-                    onClick = { showPicker = true },
+                    onClick = { if (voiceReady) requestPermissionAndStart() else showPicker = true },
                     colors = ButtonDefaults.buttonColorsPrimary(),
                     modifier = Modifier.fillMaxWidth().height(46.dp),
                 ) {
@@ -230,7 +255,12 @@ fun CallScreen(
                     icon = Icons.Rounded.GraphicEq,
                     label = "音色",
                 ) { showPicker = true }
-                CallHangup { if (started) CallWsEngine.hangup() else onEnd() }
+                CallHangup {
+                    if (started) {
+                        endingByUser = true
+                        CallWsEngine.hangup()
+                    } else onEnd()
+                }
                 CallCtl(
                     icon = if (speakerOn.value) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff,
                     label = if (speakerOn.value) "免提开" else "免提关",

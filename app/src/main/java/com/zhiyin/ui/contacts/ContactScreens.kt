@@ -790,6 +790,7 @@ fun CreateGroupScreen(
     val selected = remember { mutableStateOf(setOf<Int>()) }
     val selectedNames = remember { mutableStateOf(listOf<String>()) }
     val friends = appVm.friends
+    val canCreate = groupName.isNotBlank() && selected.value.isNotEmpty()
 
     Scaffold(
         containerColor = colors.surface,
@@ -895,7 +896,9 @@ fun CreateGroupScreen(
                         onCreated(gName, selectedNames.value.toList())
                     }
                 },
+                enabled = canCreate,
                 cornerRadius = 25.dp,
+                colors = ButtonDefaults.buttonColorsPrimary(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp)

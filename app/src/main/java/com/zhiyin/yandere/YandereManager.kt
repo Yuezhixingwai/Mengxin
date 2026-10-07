@@ -1,9 +1,12 @@
 package com.zhiyin.yandere
 
 import android.app.usage.UsageStatsManager
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import java.text.SimpleDateFormat
@@ -68,12 +71,7 @@ object YandereManager {
             Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS),
         )
         for (base in tries) {
-            try {
-                ctx.startActivity(base.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                return true
-            } catch (_: Exception) {
-                // 该 ROM 不认这个形式，试下一个
-            }
+            if (startSystemActivity(ctx, base)) return true
         }
         Log.w(TAG, "requestUsageStatsPermission: 所有跳转形式都失败")
         return false
@@ -151,31 +149,80 @@ object YandereManager {
      */
     fun requestDeviceAdmin(ctx: Context): Boolean {
         val comp = android.content.ComponentName(ctx, YandereDeviceAdminReceiver::class.java)
-        try {
-            val intent = Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-                .putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, comp)
-                .putExtra(
-                    android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                    "开启后，病娇模式下的 Ta 可以在生气时锁住你的手机屏幕。可随时在系统设置里停用。"
-                )
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            ctx.startActivity(intent)
+        // Huawei/HarmonyOS 上 ACTION_ADD_DEVICE_ADMIN 常会启动一个黑屏的临时任务，
+        // 随后又立即退回应用。改为进入「安全」，再由用户按 HarmonyOS 路径开启。
+        if (isHuaweiFamily()) {
+            val opened = startSystemActivity(ctx, Intent(Settings.ACTION_SECURITY_SETTINGS))
+            Log.i(TAG, "requestDeviceAdmin: Huawei/HarmonyOS security settings opened=$opened")
+            return opened
+        }
+
+        val intent = Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+            .putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, comp)
+            .putExtra(
+                android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                "开启后，病娇模式下的 Ta 可以在生气时锁住你的手机屏幕。可随时在系统设置里停用。"
+            )
+        if (startSystemActivity(ctx, intent)) {
             Log.i(TAG, "requestDeviceAdmin: 已拉起系统确认框")
             return true
-        } catch (e: Exception) {
-            Log.w(TAG, "requestDeviceAdmin failed: ${e.message}")
         }
-        // 兜底：直接跳系统安全设置，用户在「设备管理应用」里手动开
-        return try {
-            ctx.startActivity(
-                Intent(Settings.ACTION_SECURITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-            Log.i(TAG, "requestDeviceAdmin: 已改为打开系统安全设置")
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "openSecuritySettings failed: ${e.message}")
-            false
+        return openDeviceAdminList(ctx)
+    }
+
+    /** 打开「设备管理应用」列表；ROM 不支持时退回安全设置。 */
+    private fun openDeviceAdminList(ctx: Context): Boolean {
+        val tries = listOf(
+            Intent("android.settings.DEVICE_ADMIN_SETTINGS"),
+            Intent(Settings.ACTION_SECURITY_SETTINGS),
+        )
+        for (intent in tries) {
+            if (startSystemActivity(ctx, intent)) return true
         }
+        Log.w(TAG, "openDeviceAdminList: 所有跳转形式都失败")
+        return false
+    }
+
+    /** Activity 上下文不新建 task，避免华为设置页黑屏或立即回退。 */
+    private fun startSystemActivity(ctx: Context, intent: Intent): Boolean = try {
+        val activity = ctx.findActivity()
+        if (activity != null) {
+            activity.startActivity(intent)
+        } else {
+            ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        true
+    } catch (e: Exception) {
+        Log.w(TAG, "startSystemActivity(${intent.action}) failed: ${e.message}")
+        false
+    }
+
+    private fun Context.findActivity(): Activity? {
+        var current: Context? = this
+        while (current is ContextWrapper) {
+            if (current is Activity) return current
+            val next = current.baseContext
+            if (next === current) break
+            current = next
+        }
+        return current as? Activity
+    }
+
+    private fun isHuaweiFamily(): Boolean {
+        val maker = Build.MANUFACTURER.orEmpty()
+        val brand = Build.BRAND.orEmpty()
+        return maker.contains("huawei", ignoreCase = true) ||
+            maker.contains("honor", ignoreCase = true) ||
+            brand.contains("huawei", ignoreCase = true) ||
+            brand.contains("honor", ignoreCase = true)
+    }
+
+    /** 是否只需展示 Huawei/HarmonyOS 的设备管理手动路径提示。 */
+    fun needsHuaweiHarmonyAdminGuide(): Boolean {
+        val maker = Build.MANUFACTURER.orEmpty()
+        val brand = Build.BRAND.orEmpty()
+        return maker.contains("huawei", ignoreCase = true) ||
+            brand.contains("huawei", ignoreCase = true)
     }
 
     /** 锁屏。需要设备管理器权限。 */

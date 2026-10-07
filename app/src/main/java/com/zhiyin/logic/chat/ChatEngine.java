@@ -871,7 +871,19 @@ public class ChatEngine {
                     }
                     String speaker = spMatcher.group(1).trim();
                     String msg = spMatcher.group(2).trim();
-                    if (!msg.isEmpty()) speakerMsgs.add(new String[]{speaker, msg});
+                    boolean isMember = false;
+                    for (String member : g.members) {
+                        if (member.equals(speaker)) {
+                            isMember = true;
+                            break;
+                        }
+                    }
+                    // [STICKER:xxx] 等业务标记不是说话人，不能拿来当头像和昵称。
+                    if (isMember && !msg.isEmpty()) {
+                        speakerMsgs.add(new String[]{speaker, msg});
+                    } else if (!msg.isEmpty()) {
+                        speakerMsgs.add(new String[]{null, msg});
+                    }
                 }
                 if (!foundSpeaker) {
                     for (String line : reply.split("\\n")) {
@@ -898,14 +910,18 @@ public class ChatEngine {
                     }
                 }
                 if (foundSpeaker) {
+                    int fallbackIndex = 0;
                     if (!leadingText.isEmpty()) {
-                        MsgRepo.add(ctx, sid, "ai", leadingText);
+                        String fallbackSpeaker = fallbackGroupSpeaker(g, mentionedNames, fallbackIndex++);
+                        MsgRepo.add(ctx, sid, "ai", "[" + fallbackSpeaker + "] " + leadingText);
                         notifyChanged();
                     }
                     int step = leadingText.isEmpty() ? 0 : 1;
                     for (String[] sm : speakerMsgs) {
                         final String speaker = sm[0];
                         final String msg = sm[1];
+                        final String resolvedSpeaker = speaker != null && !speaker.isEmpty()
+                                ? speaker : fallbackGroupSpeaker(g, mentionedNames, fallbackIndex++);
                         List<String> segs = splitText(msg);
                         for (int i = 0; i < segs.size(); i++) {
                             final String seg = segs.get(i);
@@ -913,7 +929,7 @@ public class ChatEngine {
                             step++;
                             MAIN.postDelayed(() -> {
                                 if (!seg.isEmpty()) {
-                                    String content = speaker != null ? "[" + speaker + "] " + seg : seg;
+                                    String content = "[" + resolvedSpeaker + "] " + seg;
                                     MsgRepo.add(ctx, sid, "ai", content);
                                     notifyChanged();
                                 }
@@ -926,7 +942,10 @@ public class ChatEngine {
                         notifySending(false);
                     }, fStep * 600L + 80);
                 } else {
-                    if (!reply.isEmpty()) MsgRepo.add(ctx, sid, "ai", reply);
+                    if (!reply.isEmpty()) {
+                        String fallbackSpeaker = fallbackGroupSpeaker(g, mentionedNames, 0);
+                        MsgRepo.add(ctx, sid, "ai", "[" + fallbackSpeaker + "] " + reply);
+                    }
                     notifyChanged();
                     notifyTyping(false);
                     notifySending(false);
@@ -938,6 +957,36 @@ public class ChatEngine {
                 notifySending(false);
             }
         }).start();
+    }
+
+    public static void addGroupRedpacketReceipts(Context ctx, GroupInfo group, double total, int count) {
+        if (group == null || group.members.length == 0 || count <= 0 || total <= 0) return;
+        List<String> winners = new ArrayList<>(java.util.Arrays.asList(group.members));
+        java.util.Collections.shuffle(winners);
+        int winnerCount = Math.min(count, winners.size());
+        long totalCents = Math.round(total * 100.0);
+        long baseCents = totalCents / winnerCount;
+        long remainder = totalCents % winnerCount;
+        for (int i = 0; i < winnerCount; i++) {
+            final String winner = winners.get(i);
+            final long cents = baseCents + (i < remainder ? 1 : 0);
+            final long delay = 350L + i * 420L;
+            MAIN.postDelayed(() -> {
+                MsgRepo.add(ctx, group.sessionId(), "ai",
+                        "[" + winner + "] (收款 " + fmtMoney(cents / 100.0) + "元)");
+                notifyChanged();
+            }, delay);
+        }
+    }
+
+    private static String fallbackGroupSpeaker(GroupInfo group, HashSet<String> mentionedNames, int index) {
+        if (mentionedNames != null && mentionedNames.size() == 1) {
+            return mentionedNames.iterator().next();
+        }
+        if (group != null && group.members.length > 0) {
+            return group.members[Math.floorMod(index, group.members.length)];
+        }
+        return "群成员";
     }
 
     public static Map<String, String> fetchContactsSync(String token) {
@@ -1213,6 +1262,16 @@ public class ChatEngine {
         if (raw.startsWith("[CUSTOM_STICKER:")) return "[表情消息]";
         if (raw.startsWith("|||auto_sticker|||")) return "[表情消息]";
         if (raw.startsWith("[image]")) return "[图片]";
+        if (raw.startsWith("[calllog]")) {
+            int seconds = 0;
+            try { seconds = Integer.parseInt(raw.substring(9).trim()); } catch (Exception ignored) {}
+            if (seconds >= 60) {
+                int minutes = seconds / 60;
+                int remain = seconds % 60;
+                return "语音通话 · " + minutes + "分" + (remain > 0 ? remain + "秒" : "");
+            }
+            return seconds > 0 ? "语音通话 · " + seconds + "秒" : "语音通话";
+        }
         if (raw.startsWith("(转账") || raw.startsWith("(红包") || raw.startsWith("(收款")) {
             int bar = raw.indexOf('|');
             return bar > 0 ? raw.substring(0, bar) + ")" : raw;

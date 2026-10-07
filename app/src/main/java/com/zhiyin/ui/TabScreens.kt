@@ -1061,6 +1061,8 @@ fun SettingsScreen(
                             com.zhiyin.yandere.YandereManager.isDeviceAdminActive(yandereCtx)
                         }
                         val allOk = usageOk && adminOk
+                        val showHuaweiAdminGuide =
+                            com.zhiyin.yandere.YandereManager.needsHuaweiHarmonyAdminGuide()
                         com.zhiyin.ui.components.LingXinDialog(
                             onDismiss = { showYanderePerm = false },
                             title = if (allOk) "授权已完成" else "开启病娇模式还需授权",
@@ -1071,6 +1073,9 @@ fun SettingsScreen(
                                 append("② 设备管理器")
                                 append(if (adminOk) "　已授权 ✓" else "　未授权")
                                 append("\n让 Ta 生气时能真的锁住你的手机。\n\n")
+                                if (showHuaweiAdminGuide && usageOk && !adminOk) {
+                                    append("Huawei/HarmonyOS：进入安全界面后往下滑 → 点击「更多安全设置」 → 「设备管理器」。\n\n")
+                                }
                                 if (allOk) {
                                     append("两项都好了，病娇模式已就绪。")
                                 } else {
@@ -1097,8 +1102,8 @@ fun SettingsScreen(
                                         .requestDeviceAdmin(yandereCtx)
                                     if (!opened) {
                                         appVm.showToast("打不开授权界面，请到系统设置里找到「设备管理应用」手动开启")
-                                    } else {
-                                        appVm.showToast("如果没有弹窗，请到系统设置的「设备管理应用」里找到「灵心病娇模式」并激活")
+                                    } else if (showHuaweiAdminGuide) {
+                                        appVm.showToast("往下滑 → 更多安全设置 → 设备管理器")
                                     }
                                 }
                             }

@@ -40,6 +40,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.MoreVert
@@ -62,6 +63,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -70,6 +72,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,9 +80,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.ui.components.ImageCropperDialog
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.LingXinSheet
+import com.zhiyin.ui.components.PersonaAvatar
 import com.zhiyin.ui.components.UserAvatar
 import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.RubberBandBox
@@ -229,6 +234,7 @@ fun GroupChatScreen(
                     }
                     GroupMessageRow(
                         msg = msg,
+                        memberNames = vm.group.members.toList(),
                         animateIn = msg.index >= initialCount,
                         onLongPress = { actionMsgIndex = msg.index },
                     )
@@ -558,14 +564,27 @@ fun GroupChatScreen(
 }
 
 @Composable
-private fun GroupMessageRow(msg: ChatMsg, animateIn: Boolean = false, onLongPress: () -> Unit) {
+private fun GroupMessageRow(
+    msg: ChatMsg,
+    memberNames: List<String>,
+    animateIn: Boolean = false,
+    onLongPress: () -> Unit,
+) {
     val mine = msg.role == "user"
     var text = msg.content
+    var speakerName: String? = null
     if (!mine) {
-        val match = Regex("^[\\[【]([^\\]】]+)[\\]】]\\s*[:：]?\\s*(.*)$", RegexOption.DOT_MATCHES_ALL).find(msg.content)
+        // 表情标记可能出现在说话人之前，不能把 STICKER 当成角色名。
+        text = text.replace(Regex("^\\[STICKER:[^\\]]+]\\s*"), "")
+        val match = Regex("^[\\[【]([^\\]】]+)[\\]】]\\s*[:：]?\\s*(.*)$", RegexOption.DOT_MATCHES_ALL).find(text)
         if (match != null) {
-            text = match.groupValues[2]
+            val candidate = match.groupValues[1].trim()
+            if (memberNames.contains(candidate)) {
+                speakerName = candidate
+                text = match.groupValues[2]
+            }
         }
+        if (speakerName == null) speakerName = memberNames.firstOrNull()
     }
     MessageEntrance(mine = mine, animate = animateIn) {
         Row(
@@ -577,31 +596,94 @@ private fun GroupMessageRow(msg: ChatMsg, animateIn: Boolean = false, onLongPres
             horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
         ) {
             if (!mine) {
-                com.zhiyin.ui.DefaultAvatar(size = 36.dp)
+                PersonaAvatar(
+                    contactId = FriendManager.findIdByName(speakerName),
+                    name = speakerName,
+                    size = 36.dp,
+                )
                 Spacer(Modifier.width(8.dp))
             }
             Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                Surface(
-                    shape = RoundedCornerShape(
-                        topStart = if (mine) 18.dp else 6.dp,
-                        topEnd = if (mine) 6.dp else 18.dp,
-                        bottomStart = 18.dp,
-                        bottomEnd = 18.dp,
-                    ),
-                    color = if (mine) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
-                ) {
+                if (!mine) {
                     Text(
-                        text,
-                        color = if (mine) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .widthIn(max = 264.dp)
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        text = speakerName ?: "群成员",
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 3.dp),
                     )
+                }
+                if ((mine && text.trim().startsWith("(红包")) || (!mine && text.trim().startsWith("(收款"))) {
+                    GroupMoneyBubble(text, received = !mine)
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(
+                            topStart = if (mine) 18.dp else 6.dp,
+                            topEnd = if (mine) 6.dp else 18.dp,
+                            bottomStart = 18.dp,
+                            bottomEnd = 18.dp,
+                        ),
+                        color = if (mine) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Text(
+                            text,
+                            color = if (mine) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .widthIn(max = 264.dp)
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
                 }
             }
             if (mine) {
                 Spacer(Modifier.width(8.dp))
                 UserAvatar(avatarUrl = null, size = 36.dp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupMoneyBubble(raw: String, received: Boolean) {
+    val inner = raw.trim().removePrefix(if (received) "(收款" else "(红包").removeSuffix(")").trim()
+    val countMatch = Regex("(\\d+)个").find(inner)
+    val countText = countMatch?.groupValues?.get(1)?.let { "$it 个" } ?: "群红包"
+    val amountText = Regex("([0-9]+(?:\\.[0-9]+)?)元").find(inner)
+        ?.groupValues?.get(1)?.let { if (received) "¥$it" else "¥$it · $countText" }
+        ?: if (received) "已存入钱包" else countText
+    val color = if (received) Color(0xFF34B78F) else Color(0xFFF5A623)
+    Surface(shape = RoundedCornerShape(14.dp), modifier = Modifier.widthIn(min = 150.dp)) {
+        Row(
+            modifier = Modifier
+                .background(
+                    Brush.linearGradient(listOf(color.copy(alpha = 0.85f), color)),
+                    RoundedCornerShape(14.dp),
+                )
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(Color.White.copy(alpha = 0.22f), RoundedCornerShape(9.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (received) Icons.Rounded.AccountBalance else Icons.Rounded.Redeem,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(if (received) "已收款" else "红包", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text(
+                    amountText,
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.88f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -629,6 +711,10 @@ private fun GroupRedpacketDialog(
             var cnt = count.toIntOrNull() ?: 1
             if (cnt < 1) cnt = 1
             if (memberCount > 0 && cnt > memberCount) cnt = memberCount
+            if (total < cnt * 0.01) {
+                error = "每个红包至少需要 0.01 元"
+                return@LingXinDialog
+            }
             onConfirm(Math.round(total * 100) / 100.0, cnt)
         },
     ) {

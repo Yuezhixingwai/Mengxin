@@ -35,8 +35,13 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Groups2
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -163,16 +168,19 @@ private fun parsePosts(resp: String): List<MomentPost> {
         val arr = JSONObject(resp).optJSONArray("posts") ?: return emptyList()
         (0 until arr.length()).mapNotNull { i ->
             val o = arr.getJSONObject(i)
+            val postContent = o.optString("content", "")
             val commentsJson = o.optJSONArray("comments")
             val comments = commentsJson?.let { ca ->
                 (0 until ca.length()).map { j ->
                     val c = ca.getJSONObject(j)
                     val isAi = c.optInt("is_ai") == 1
+                    val commentName = if (isAi) c.optString("ai_name", "AI")
+                    else c.optString("nickname", c.optString("username", "用户"))
+                    val rawContent = c.optString("content", "")
                     MomentComment(
                         isAi = isAi,
-                        name = if (isAi) c.optString("ai_name", "AI")
-                        else c.optString("nickname", c.optString("username", "用户")),
-                        content = c.optString("content", ""),
+                        name = commentName,
+                        content = if (isAi) normalizeAiComment(rawContent, postContent, commentName) else rawContent,
                     )
                 }
             } ?: emptyList()
@@ -181,7 +189,7 @@ private fun parsePosts(resp: String): List<MomentPost> {
                 nickname = o.optString("nickname", o.optString("username", "用户")),
                 username = o.optString("username", ""),
                 avatar = o.optString("avatar", ""),
-                content = o.optString("content", ""),
+                content = postContent,
                 time = ApiGateway.toBeijingTime(o.optString("created_at", ""), "MM-dd HH:mm"),
                 images = o.optJSONArray("images")?.let { ia ->
                     (0 until ia.length()).mapNotNull { k -> ia.optString(k, "").takeIf { it.isNotEmpty() } }
@@ -481,6 +489,37 @@ fun MomentsScreen(
     }
 }
 
+private object AiCommentGuard {
+    private val running = java.util.Collections.synchronizedSet(mutableSetOf<Int>())
+    fun start(postId: Int): Boolean = running.add(postId)
+    fun finish(postId: Int) { running.remove(postId) }
+}
+
+private const val AI_COMMENT_RULE =
+    "请结合动态正文写一条自然、具体、符合人设的中文评论，8到40字；不要只回复表情、点赞、大拇指、👍或重复已有评论。"
+
+private fun normalizeAiComment(raw: String, postContent: String, aiName: String): String {
+    val text = raw.trim()
+    val stripped = text
+        .replace(Regex("[👍🏻🏼🏽🏾🏿❤❤️✨👏🔥💯!！。,.，\\s]"), "")
+        .lowercase()
+    val isEmptyPraise = stripped.isEmpty() || stripped in setOf(
+        "赞", "点赞", "大拇指", "支持", "不错", "真棒", "good", "nice", "like"
+    )
+    if (!isEmptyPraise) return text
+    val subject = postContent.trim().replace(Regex("\\s+"), " ").take(18)
+    val variants = if (subject.isEmpty()) {
+        listOf("这条动态让我有点好奇，愿意再多说一点吗？", "刚看到这条动态，感觉背后还有不少故事。", "收到你的分享了，我会认真记住这一刻。")
+    } else {
+        listOf(
+            "看到你提到“$subject”，感觉很有意思。",
+            "关于“$subject”，我也想听听你更多的想法。",
+            "“$subject”这段分享很真实，我认真看完了。",
+        )
+    }
+    return variants[(aiName.hashCode() and Int.MAX_VALUE) % variants.size]
+}
+
 private fun onLike(post: MomentPost, appVm: AppViewModel, reload: () -> Unit) {
     ApiGateway.post("/api/moments/${post.id}/like", "{}", AppSession.token(), object : ApiGateway.Callback {
         override fun onSuccess(response: String) {
@@ -494,12 +533,18 @@ private fun onLike(post: MomentPost, appVm: AppViewModel, reload: () -> Unit) {
 }
 
 private fun aiComment(post: MomentPost, appVm: AppViewModel, reload: () -> Unit) {
+    if (!AiCommentGuard.start(post.id)) {
+        appVm.showToast("这条动态正在生成评论，请稍候")
+        return
+    }
     val token = AppSession.token()
     FriendManager.getAll(token, object : FriendManager.Callback {
         override fun onResult(list: MutableList<FriendManager.Friend>?) {
-            val friends = list ?: emptyList()
+            val commentedNames = post.comments.filter { it.isAi }.map { it.name }.toSet()
+            val friends = (list ?: emptyList()).filterNot { it.name in commentedNames }
             if (friends.isEmpty()) {
-                appVm.showToast("通讯录里还没有AI人设，请先添加")
+                AiCommentGuard.finish(post.id)
+                appVm.showToast(if (commentedNames.isEmpty()) "通讯录里还没有AI人设，请先添加" else "所有AI都已经评论过了")
                 return
             }
             val pick = friends.random()
@@ -507,32 +552,44 @@ private fun aiComment(post: MomentPost, appVm: AppViewModel, reload: () -> Unit)
             val body = JSONObject().apply {
                 put("ai_name", pick.name)
                 put("ai_persona", pick.persona ?: "")
+                put("post_content", post.content)
+                put("instruction", AI_COMMENT_RULE)
+                put("existing_comments", JSONArray(post.comments.map { it.content }))
             }
             ApiGateway.post("/api/moments/${post.id}/ai-comment", body.toString(), token, object : ApiGateway.Callback {
                 override fun onSuccess(response: String) {
+                    AiCommentGuard.finish(post.id)
                     appVm.showToast("评论完成")
                     reload()
                 }
 
                 override fun onError(error: String?) {
+                    AiCommentGuard.finish(post.id)
                     appVm.showToast("AI评论失败: ${error ?: ""}")
                 }
             })
         }
 
         override fun onError(err: String?) {
+            AiCommentGuard.finish(post.id)
             appVm.showToast("获取通讯录失败: ${err ?: ""}")
         }
     })
 }
 
 private fun aiBatchComment(post: MomentPost, appVm: AppViewModel, reload: () -> Unit) {
+    if (!AiCommentGuard.start(post.id)) {
+        appVm.showToast("这条动态正在生成评论，请稍候")
+        return
+    }
     val token = AppSession.token()
     FriendManager.getAll(token, object : FriendManager.Callback {
         override fun onResult(list: MutableList<FriendManager.Friend>?) {
-            val friends = list ?: emptyList()
+            val commentedNames = post.comments.filter { it.isAi }.map { it.name }.toSet()
+            val friends = (list ?: emptyList()).filterNot { it.name in commentedNames }
             if (friends.isEmpty()) {
-                appVm.showToast("通讯录里还没有AI人设，请先添加")
+                AiCommentGuard.finish(post.id)
+                appVm.showToast(if (commentedNames.isEmpty()) "通讯录里还没有AI人设，请先添加" else "所有AI都已经评论过了")
                 return
             }
             appVm.showToast("批量评论中…")
@@ -545,20 +602,26 @@ private fun aiBatchComment(post: MomentPost, appVm: AppViewModel, reload: () -> 
                         })
                     }
                 })
+                put("post_content", post.content)
+                put("instruction", AI_COMMENT_RULE)
+                put("existing_comments", JSONArray(post.comments.map { it.content }))
             }
             ApiGateway.post("/api/moments/${post.id}/ai-batch-comment", body.toString(), token, object : ApiGateway.Callback {
                 override fun onSuccess(response: String) {
+                    AiCommentGuard.finish(post.id)
                     appVm.showToast("完成")
                     reload()
                 }
 
                 override fun onError(error: String?) {
+                    AiCommentGuard.finish(post.id)
                     appVm.showToast("AI评论失败: ${error ?: ""}")
                 }
             })
         }
 
         override fun onError(err: String?) {
+            AiCommentGuard.finish(post.id)
             appVm.showToast("获取通讯录失败: ${err ?: ""}")
         }
     })
@@ -611,41 +674,33 @@ private fun MomentPostCard(
                     color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                     modifier = Modifier.weight(1f),
                 )
-                Text(
-                    "赞${if (post.likesCount > 0) "(${post.likesCount})" else ""}",
-                    fontSize = 12.sp,
+                MomentAction(
+                    icon = if (post.liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                    label = if (post.likesCount > 0) "${post.likesCount}" else "赞",
                     color = if (post.liked) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurfaceContainerVariant,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onLike)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentDescription = if (post.liked) "取消点赞" else "点赞",
+                    onClick = onLike,
                 )
-                Text(
-                    "评论",
-                    fontSize = 12.sp,
+                MomentAction(
+                    icon = Icons.Rounded.ChatBubbleOutline,
+                    label = "评论",
                     color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onComment)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentDescription = "评论",
+                    onClick = onComment,
                 )
-                Text(
-                    "AI评",
-                    fontSize = 12.sp,
+                MomentAction(
+                    icon = Icons.Rounded.AutoAwesome,
+                    label = "AI评",
                     color = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onAiComment)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentDescription = "随机一个AI评论",
+                    onClick = onAiComment,
                 )
-                Text(
-                    "批量",
-                    fontSize = 12.sp,
+                MomentAction(
+                    icon = Icons.Rounded.Groups2,
+                    label = "批量",
                     color = MiuixTheme.colorScheme.primaryVariant,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onAiBatchComment)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentDescription = "让多个AI评论",
+                    onClick = onAiBatchComment,
                 )
             }
 
@@ -695,6 +750,32 @@ private fun MomentPostCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MomentAction(
+    icon: ImageVector,
+    label: String,
+    color: Color,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = color,
+            modifier = Modifier.size(15.dp),
+        )
+        Text(label, fontSize = 12.sp, color = color)
     }
 }
 

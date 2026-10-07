@@ -46,7 +46,14 @@ public class GroupManager {
             Matcher mat = p.matcher(m[1]);
             while (mat.find()) {
                 String name = mat.group(1).trim();
-                if (!name.equals("系统") && !name.isEmpty()) names.add(name);
+                if (!name.equals("系统") && !name.isEmpty()
+                        && !name.startsWith("STICKER:")
+                        && !name.startsWith("CUSTOM_STICKER:")
+                        && !name.equals("错误") && !name.equals("pat")
+                        && !name.equals("image") && !name.equals("voice")
+                        && !name.equals("file") && !name.equals("calllog")) {
+                    names.add(name);
+                }
             }
         }
         return names.toArray(new String[0]);
@@ -117,8 +124,15 @@ public class GroupManager {
                 body.put("personas", ps);
                 body.put("total", total);
                 body.put("count", count);
+                // 当前服务端没有 /api/wallet/redpacket 路由。群红包使用现有钱包转账
+                // 完成一次性扣款，再把红包事件发送到群聊，避免逐成员扣款造成部分成功。
+                body = new org.json.JSONObject();
+                body.put("persona", g.name);
+                body.put("amount", total);
+                body.put("sessionId", sid);
+                body.put("note", "群红包（" + count + "个）");
                 String resp = com.zhiyin.logic.net.ApiGateway.postSync(
-                        com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE + "/api/wallet/redpacket", body.toString(), token);
+                        com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE + "/api/wallet/transfer", body.toString(), token);
                 org.json.JSONObject json = new org.json.JSONObject(resp);
                 if (json.has("error")) {
                     ChatEngine.notice(json.optString("error"));
@@ -126,7 +140,10 @@ public class GroupManager {
                 }
                 final String marker = "(红包 " + ChatEngine.fmtMoney(total) + "元 " + count + "个)";
                 android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
-                main.post(() -> ChatEngine.groupSend(ctx, g, marker));
+                main.post(() -> {
+                    ChatEngine.groupSend(ctx, g, marker);
+                    ChatEngine.addGroupRedpacketReceipts(ctx, g, total, count);
+                });
             } catch (Exception e) {
                 ChatEngine.notice("发红包失败: " + e.getMessage());
             }
