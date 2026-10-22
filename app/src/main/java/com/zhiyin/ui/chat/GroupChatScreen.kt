@@ -196,7 +196,7 @@ fun GroupChatScreen(
                 bitmap = it,
                 contentDescription = "聊天背景",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().hazeSource(hazeState),
             )
         }
         Column(
@@ -259,7 +259,7 @@ fun GroupChatScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .then(if (bgBmp == null) {
+                .then(run {
                     Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeDefaults.style(
@@ -268,8 +268,6 @@ fun GroupChatScreen(
                             noiseFactor = 0.06f,
                         ),
                     )
-                } else {
-                    Modifier
                 })
                 .onSizeChanged { inputBarHeight = with(density) { it.height.toDp() } }
                 .navigationBarsPadding()

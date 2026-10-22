@@ -1,4 +1,4 @@
-﻿package com.zhiyin.ui.discover
+package com.zhiyin.ui.discover
 
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -152,37 +152,25 @@ fun PersonaEditScreen(
         if (saving) return
         saving = true
         val tags = form.tags.split(Regex("[\\s,，#]+")).map { it.trim() }.filter { it.isNotEmpty() }.take(20)
-        val uploadImages: (Int) -> Unit = { pid ->
-            listOf("cover" to cover, "avatar" to avatar, "background" to background).forEach { (field, img) ->
-                img?.let { p ->
-                    scope.launch { PlazaApi.uploadImage(ctx, pid, field, p.bytes) }
-                }
-            }
-        }
+        val submitted = form.copy()
+        val images = listOf("cover" to cover, "avatar" to avatar, "background" to background)
         scope.launch {
-            val pid = personaId
-            if (pid == null) {
-                PlazaApi.create(form.name.trim(), form.slogan.trim(), form.keywords.trim(), form.light.trim(), form.full.trim(), form.pat.trim(), tags, form.category, form.isPublic)
-                    .onSuccess { newId ->
-                        uploadImages(newId)
-                        appVm.showToast("已保存")
-                        onSaved()
-                    }
-                    .onFailure { e ->
-                        appVm.showToast(e.message ?: "保存失败")
-                        saving = false
-                    }
-            } else {
-                PlazaApi.update(pid, form.name.trim(), form.slogan.trim(), form.keywords.trim(), form.light.trim(), form.full.trim(), form.pat.trim(), tags, form.category, form.isPublic)
-                    .onSuccess {
-                        uploadImages(pid)
-                        appVm.showToast("已保存")
-                        onSaved()
-                    }
-                    .onFailure { e ->
-                        appVm.showToast(e.message ?: "保存失败")
-                        saving = false
-                    }
+            try {
+                val pid = personaId ?: PlazaApi.create(submitted.name.trim(), submitted.slogan.trim(), submitted.keywords.trim(), submitted.light.trim(), submitted.full.trim(), submitted.pat.trim(), tags, submitted.category, submitted.isPublic).getOrThrow()
+                if (personaId != null) {
+                    PlazaApi.update(pid, submitted.name.trim(), submitted.slogan.trim(), submitted.keywords.trim(), submitted.light.trim(), submitted.full.trim(), submitted.pat.trim(), tags, submitted.category, submitted.isPublic).getOrThrow()
+                }
+                val failed = images.mapNotNull { (field, image) ->
+                    if (image != null && PlazaApi.uploadImage(ctx, pid, field, image.bytes).isFailure) field else null
+                }
+                appVm.showToast(if (failed.isEmpty()) "已保存" else "人设已保存，部分图片上传失败，请重新编辑上传")
+                onSaved()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                appVm.showToast(e.message ?: "保存失败")
+            } finally {
+                saving = false
             }
         }
     }

@@ -370,7 +370,7 @@ fun ChatDetailScreen(
                     bitmap = it,
                     contentDescription = "聊天背景",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().then(if (hasBg) Modifier.hazeSource(hazeState) else Modifier),
                 )
             }
         } else if (personaBgActive) {
@@ -378,7 +378,7 @@ fun ChatDetailScreen(
                 url = personaBgUrl,
                 contentDescription = "人设背景",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().then(if (hasBg) Modifier.hazeSource(hazeState) else Modifier),
             )
         }
         Column(
@@ -463,7 +463,7 @@ fun ChatDetailScreen(
             transparentBackground = true,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .then(if (!hasBg) {
+                .then(run {
                     Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeDefaults.style(
@@ -472,8 +472,6 @@ fun ChatDetailScreen(
                             noiseFactor = 0.06f,
                         ),
                     )
-                } else {
-                    Modifier
                 })
                 .onSizeChanged { inputBarHeight = with(density) { it.height.toDp() } }
                 .navigationBarsPadding()

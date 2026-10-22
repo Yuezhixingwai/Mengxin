@@ -64,7 +64,7 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
             override fun onResult(list: MutableList<FriendManager.Friend>?) {
                 val friends = list ?: emptyList()
                 val out = mutableListOf<UConv>()
-                for (f in friends) {
+                for (f in friends.distinctBy { it.id }) {
                     val sid = "persona_${f.name}"
                     // 轻量预览档：只取最后一条+未读数，避免每条消息都全量解析所有会话的大 JSON
                     val info = MsgRepo.getLastInfo(ctx, sid)
@@ -85,7 +85,8 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
                         )
                     )
                 }
-                for (g in GroupManager.getGroupChats(ctx)) {
+                for (g in GroupManager.getGroupChats(ctx).distinctBy { it.getOrNull(0) }) {
+                    if (g.size < 2) continue
                     val sid = g[0]
                     val name = g[1]
                     val info = MsgRepo.getLastInfo(ctx, sid)

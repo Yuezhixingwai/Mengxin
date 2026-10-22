@@ -1,6 +1,5 @@
 pluginManagement {
     repositories {
-        maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
         google {
             content {
                 includeGroupByRegex("com\\.android.*")
@@ -17,7 +16,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
     }
 }
 
