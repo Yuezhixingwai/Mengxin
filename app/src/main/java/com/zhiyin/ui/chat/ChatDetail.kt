@@ -100,6 +100,7 @@ import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.LingXinSheet
 import com.zhiyin.ui.components.PersonaAvatar
 import com.zhiyin.ui.components.RemoteImage
+import com.zhiyin.ui.components.RemoteImageCache
 import com.zhiyin.ui.components.UserAvatar
 import com.zhiyin.ui.vm.ChatMsg
 import com.zhiyin.ui.vm.ChatViewModel
@@ -1012,15 +1013,22 @@ private fun ImageBubble(
     onLongPress: () -> Unit,
     onPreview: (PreviewTarget) -> Unit = {},
 ) {
+    val ctx = LocalContext.current
+    val localPath = remember(bubble.path) { java.util.concurrent.atomic.AtomicReference<String?>(null) }
     val bmp by produceState<ImageBitmap?>(initialValue = null, bubble.path) {
         value = withContext(Dispatchers.IO) {
-            decodeSampled(bubble.path, 720)
-        }?.asImageBitmap()
+            val local = resolveChatImageFile(ctx, bubble.path)
+            localPath.set(local)
+            if (local != null) decodeSampled(local, 720)?.asImageBitmap() else null
+        }
     }
     Surface(
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.combinedClickable(
-            onClick = { onPreview(PreviewTarget.FileImage(bubble.path)) },
+            onClick = {
+                val p = localPath.get()
+                if (p != null) onPreview(PreviewTarget.FileImage(p))
+            },
             onLongClick = onLongPress,
         ),
     ) {
@@ -1039,6 +1047,29 @@ private fun ImageBubble(
                 .size(width = 160.dp, height = 120.dp)
                 .background(MiuixTheme.colorScheme.surfaceContainerHigh),
         )
+    }
+}
+
+/**
+ * 图片气泡的本地化：本地文件直接用；`/api/...` 或 `http(s)://` 的服务端图片
+ * （人设自动发的照片走这条路）先下载到 RemoteImageCache 再交给解码器。
+ */
+private fun resolveChatImageFile(ctx: android.content.Context, path: String): String? {
+    if (path.isBlank()) return null
+    return try {
+        val f = File(path)
+        if (f.exists() && f.length() > 0) return f.absolutePath
+        if (!path.startsWith("/") && !path.startsWith("http")) return null
+        val abs = RemoteImageCache.absolute(path)
+        val cache = RemoteImageCache.fileFor(ctx, abs)
+        if (!cache.exists() || cache.length() <= 0) {
+            val data = ApiGateway.getRaw(abs, ctx)
+            if (data == null || data.isEmpty()) return null
+            try { cache.writeBytes(data) } catch (_: Exception) { }
+        }
+        if (cache.exists() && cache.length() > 0) cache.absolutePath else null
+    } catch (_: Exception) {
+        null
     }
 }
 

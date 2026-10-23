@@ -174,6 +174,9 @@ public class ChatEngine {
                 body.put("persona_name", p.name);
                 body.put("self_upload", 1);
                 body.put("raw_user_content", text);
+                // 声明本客户端能渲染服务端下发的远程图片（2.3.53+）。
+                // 不开这个开关服务端不会让人设发照片，只会把 [PHOTO:] 标记剥掉。
+                body.put("photo_support", 1);
 
                 // 病娇模式：带 yandere_mode + 使用情况上下文（AI据此吃醋）
                 if (com.zhiyin.yandere.YandereManager.INSTANCE.isEnabled(ctx)) {
@@ -196,6 +199,12 @@ public class ChatEngine {
                 String content = "";
                 if (json.has("choices"))
                     content = json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "");
+
+                // 人设自动发照片：服务端异步生图（万相约10s），这里后台短轮询领取，
+                // 领到就补一条 [image]<url> 的 AI 消息；文字回复照常先显示，不阻塞。
+                if (json.optBoolean("photo_pending", false)) {
+                    pollPendingPhoto(ctx, sid, p.name);
+                }
 
                 // 病娇模式：检测AI回复中的 [LOCK] 标记 → 锁屏 → 清除标记
                 if (com.zhiyin.yandere.YandereManager.INSTANCE.isEnabled(ctx) && content.contains("[LOCK]")) {
@@ -1326,6 +1335,41 @@ public class ChatEngine {
                 }
             } catch (Exception ignored) {}
             if (onDone != null) onDone.run();
+        }).start();
+    }
+
+    /**
+     * 领取人设自动发的照片：服务端生完图后由 /api/chat/photo-pending 交给客户端。
+     * 万相出图约 10s，所以首次延迟 3.5s，之后每 2s 一次，最长约 45s；拿到就补一条图片消息。
+     */
+    private static void pollPendingPhoto(Context ctx, String sid, String personaName) {
+        new Thread(() -> {
+            try {
+                for (int i = 0; i < 20; i++) {
+                    Thread.sleep(i == 0 ? 3500L : 2000L);
+                    String t = token(ctx);
+                    if (t == null || t.isEmpty()) return;
+                    String reqUrl = ApiGateway.ZHIYIN_BASE
+                            + "/api/chat/photo-pending?consume=1&persona_name="
+                            + URLEncoder.encode(personaName == null ? "" : personaName, "UTF-8");
+                    String resp = ApiGateway.getSync(reqUrl, t);
+                    JSONObject j = new JSONObject(resp);
+                    String st = j.optString("status", "");
+                    if ("ready".equals(st)) {
+                        String img = j.optString("url", "");
+                        if (!img.isEmpty()) {
+                            MsgRepo.add(ctx, sid, "ai", "[image]" + img);
+                            notifyChanged();
+                            Log.d("Photo", "人设发来照片: " + img);
+                        }
+                        return;
+                    }
+                    if ("failed".equals(st)) return;
+                    if ("none".equals(st) && i > 1) return;
+                }
+            } catch (Exception e) {
+                Log.d("Photo", "领取照片失败: " + e.getMessage());
+            }
         }).start();
     }
 
