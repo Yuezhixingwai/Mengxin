@@ -83,6 +83,20 @@ object CallWsEngine {
     private val queuedBytes = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var playStarted = false
     @Volatile private var firstQueuedAt = 0L
+
+    /**
+     * 模拟器判定：MuMu / 雷电 / AOSP 模拟镜像里的 AcousticEchoCanceler 常常"报告可用但实际不消除"，
+     * AI 的声音会被原样收进麦克风。这类环境一律按「无 AEC」处理，把上行门限抬高。
+     */
+    private val isEmulator: Boolean by lazy {
+        val fp = (android.os.Build.FINGERPRINT ?: "").lowercase()
+        val model = (android.os.Build.MODEL ?: "").lowercase()
+        val hw = (android.os.Build.HARDWARE ?: "").lowercase()
+        val prod = (android.os.Build.PRODUCT ?: "").lowercase()
+        fp.contains("generic") || fp.contains("unknown") ||
+            model.contains("mumu") || model.contains("nemu") || model.contains("sdk_gphone") ||
+            hw.contains("goldfish") || hw.contains("ranchu") || prod.contains("mumu")
+    }
     private var aec: AcousticEchoCanceler? = null
     private var ns: NoiseSuppressor? = null
     private var agc: AutomaticGainControl? = null
@@ -489,11 +503,14 @@ object CallWsEngine {
                     // · 有系统 AEC：回声已被抵消，门槛低，正常音量说话即可开门插嘴；
                     // · 没有 AEC：外放回声很大，门槛抬高到只放"近场大嗓门"，
                     //   混进去的回声由服务端 isSelfEcho 文本过滤兜底。
-                    val gate = if (aecReady.get()) noiseFloor * 2.0 + 300.0 else noiseFloor * 3.0 + 2600.0
+                    // AEC 不可信时（模拟器 / 系统报告可用但实际不消除）：按无 AEC 抬门限，
+                    // 否则 AI 自己的声音会被收进麦克风，既误触发打断又顶掉用户说话的窗口。
+                    val aecUsable = aecReady.get() && !isEmulator
+                    val gate = if (aecUsable) noiseFloor * 2.6 + 1100.0 else noiseFloor * 3.2 + 2800.0
                     // 抢占式打断：不等 ASR 出字，能量明显超过人声门限就先把播放停掉。
                     // 只在系统 AEC 生效时启用（没有 AEC 时外放回声会把自己打断），
                     // 连续 3 帧（300ms）+ 1.5s 冷却；真内容由服务端 ASR 确认，回声由 isSelfEcho 兜底。
-                    if (aecReady.get()) {
+                    if (aecUsable) {
                         val nowMs = System.currentTimeMillis()
                         val bargeTh = noiseFloor * 2.5 + 1400.0
                         if (rms >= bargeTh) bargeStreak++ else bargeStreak = 0
