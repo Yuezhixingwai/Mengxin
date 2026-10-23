@@ -61,6 +61,10 @@ object CallWsEngine {
     private const val WS_HOST = "wss://" + API_HOST + "/ws/call"
     private const val MIC_RATE = 16000
     private const val OUT_RATE = 24000
+    // 起播水位：先攒够 180ms 音频再开播，抹平首包到达不均匀造成的 underrun
+    private const val PREFILL_BYTES = OUT_RATE * 2 * 180 / 1000
+    // 队列上限 5s，防服务端异常刷包把内存吃光
+    private const val QUEUE_MAX_BYTES = OUT_RATE * 2 * 5
 
     private val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + Job())
     private var sessionJob: Job? = null
@@ -72,6 +76,13 @@ object CallWsEngine {
     private var audioRecord: AudioRecord? = null
     private var audioTrack: AudioTrack? = null
     private var micThread: Thread? = null
+    // 抖动缓冲：网络线程只入队，独立播放线程按序写出。
+    // 之前是收到就 write，包到得忽快忽慢会直接把 AudioTrack 抖到 underrun（听感一顿一顿）。
+    private var playThread: Thread? = null
+    private val audioQueue = java.util.concurrent.LinkedBlockingQueue<ByteArray>()
+    private val queuedBytes = java.util.concurrent.atomic.AtomicInteger(0)
+    @Volatile private var playStarted = false
+    @Volatile private var firstQueuedAt = 0L
     private var aec: AcousticEchoCanceler? = null
     private var ns: NoiseSuppressor? = null
     private var agc: AutomaticGainControl? = null
@@ -150,6 +161,16 @@ object CallWsEngine {
             return
         }
         try { audioManager?.isSpeakerphoneOn = on } catch (_: Exception) {}
+    }
+
+    /** 本地能量抢占打断：先停播、再让服务端掐掉合成，最后靠 ASR 确认用户到底说了什么 */
+    private fun triggerLocalBarge() {
+        if (!speaking.get()) return
+        Log.i("CallWs", "本地能量抢占打断")
+        flushPlayback()
+        speaking.set(false)
+        try { ws?.send(JSONObject().put("type", "interrupt").toString()) } catch (_: Exception) {}
+        state.value = state.value.copy(phase = Phase.LISTENING, subtitle = "好，你先说～")
     }
 
     /** 手动打断（服务端也会自动打断，这里只是保险） */
@@ -303,6 +324,8 @@ object CallWsEngine {
             }
             "speak_done" -> {
                 speaking.set(false)
+                // 这一轮音频已经发完：还没攒够水位就直接起播，避免短句（"嗯"）干等 400ms
+                if (!playStarted && firstQueuedAt > 0L) firstQueuedAt = System.currentTimeMillis() - 500L
                 state.value = state.value.copy(phase = Phase.LISTENING, subtitle = m.optString("text"))
             }
             "interrupted" -> {
@@ -406,11 +429,12 @@ object CallWsEngine {
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build()
                 )
-                .setBufferSizeInBytes(maxOf(outBuf * 2, 8192))
+                .setBufferSizeInBytes(maxOf(outBuf * 3, 16384))
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
-            track.play()
             audioTrack = track
+            // 不在 build 后立刻 play：交给播放线程攒够水位再起播
+            startPlaybackLoop(track)
         } catch (_: Exception) {}
 
         // 录音：16k 单声道，持续推流
@@ -440,7 +464,9 @@ object CallWsEngine {
             var noiseFloor = 350.0      // 环境噪声底（EMA 自适应）
             var gateOpen = false        // 回声门状态：打开后带滞回，词间停顿不断流
             var quietRun = 0
-            val preRoll = ArrayDeque<ByteArray>() // 开门前的缓冲（≈1.2s），补发防止掐掉说话开头
+            var bargeStreak = 0         // 抢占式打断：连续高能量帧计数
+            var lastBargeAt = 0L        // 上次本地打断时间（做冷却，防连击）
+            val preRoll = ArrayDeque<ByteArray>() // 开门前的缓冲（≈2s），补发防止掐掉说话开头
             while (running.get()) {
                 val n = rec.read(chunk, 0, chunk.size)
                 if (n <= 0) { Thread.sleep(5); continue }
@@ -464,6 +490,19 @@ object CallWsEngine {
                     // · 没有 AEC：外放回声很大，门槛抬高到只放"近场大嗓门"，
                     //   混进去的回声由服务端 isSelfEcho 文本过滤兜底。
                     val gate = if (aecReady.get()) noiseFloor * 2.0 + 300.0 else noiseFloor * 3.0 + 2600.0
+                    // 抢占式打断：不等 ASR 出字，能量明显超过人声门限就先把播放停掉。
+                    // 只在系统 AEC 生效时启用（没有 AEC 时外放回声会把自己打断），
+                    // 连续 3 帧（300ms）+ 1.5s 冷却；真内容由服务端 ASR 确认，回声由 isSelfEcho 兜底。
+                    if (aecReady.get()) {
+                        val nowMs = System.currentTimeMillis()
+                        val bargeTh = noiseFloor * 2.5 + 1400.0
+                        if (rms >= bargeTh) bargeStreak++ else bargeStreak = 0
+                        if (bargeStreak >= 3 && nowMs - lastBargeAt > 1500L) {
+                            bargeStreak = 0
+                            lastBargeAt = nowMs
+                            triggerLocalBarge()
+                        }
+                    }
                     // 开门时先补发缓冲帧（说话开头不被掐），关门要连续 2s 安静（词间停顿不掉线）。
                     if (!gateOpen) {
                         if (rms >= gate) {
@@ -504,22 +543,60 @@ object CallWsEngine {
         } catch (_: Exception) { null }
     }
 
+    /** 下行音频只入队，由播放线程统一写出（起播前先攒够 PREFILL_BYTES 水位） */
     private fun playPcm(bytes: ByteArray) {
-        val track = audioTrack ?: return
-        try {
-            track.write(bytes, 0, bytes.size)
-        } catch (_: Exception) {}
+        if (audioTrack == null) return
+        if (queuedBytes.get() + bytes.size > QUEUE_MAX_BYTES) return
+        if (firstQueuedAt == 0L) firstQueuedAt = System.currentTimeMillis()
+        audioQueue.offer(bytes)
+        queuedBytes.addAndGet(bytes.size)
     }
 
+    private fun startPlaybackLoop(track: AudioTrack) {
+        if (playThread != null) return
+        playThread = thread(name = "call-ws-play") {
+            while (running.get()) {
+                try {
+                    if (!playStarted) {
+                        val queued = queuedBytes.get()
+                        val waited = if (firstQueuedAt > 0L) System.currentTimeMillis() - firstQueuedAt else 0L
+                        // 够水位就起播；整句很短永远攒不够时等 400ms 强制起播，别把话吞掉
+                        if (queued < PREFILL_BYTES && waited < 400L) { Thread.sleep(10); continue }
+                        if (queued <= 0) { Thread.sleep(10); continue }
+                        track.play()
+                        playStarted = true
+                    }
+                    val buf = audioQueue.poll(20, TimeUnit.MILLISECONDS) ?: continue
+                    queuedBytes.addAndGet(-buf.size)
+                    track.write(buf, 0, buf.size)
+                } catch (_: InterruptedException) {
+                    break
+                } catch (_: Exception) {
+                }
+            }
+            try { track.stop() } catch (_: Exception) {}
+        }
+    }
+
+    /** 打断/挂断：清空待播队列并丢弃 AudioTrack 里积压的音频 */
     private fun flushPlayback() {
+        audioQueue.clear()
+        queuedBytes.set(0)
+        playStarted = false
+        firstQueuedAt = 0L
         try {
             audioTrack?.pause()
             audioTrack?.flush()
-            audioTrack?.play()
         } catch (_: Exception) {}
     }
 
     private fun stopAudio() {
+        try { playThread?.interrupt() } catch (_: Exception) {}
+        playThread = null
+        audioQueue.clear()
+        queuedBytes.set(0)
+        playStarted = false
+        firstQueuedAt = 0L
         try { aec?.release() } catch (_: Exception) {}
         try { ns?.release() } catch (_: Exception) {}
         try { agc?.release() } catch (_: Exception) {}
