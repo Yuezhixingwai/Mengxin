@@ -1027,8 +1027,9 @@ private fun PhotoPendingBubble(st: PhotoPendingBus.State) {
     val left = ((st.etaSec * 1000L - (now - st.startedAt)) / 1000L).coerceAtLeast(0L)
     Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.CenterStart) {
         Box(
+            // 和图片气泡同宽同比例（1:1），这样图到了替换时不会跳位置
             modifier = Modifier
-                .size(width = 200.dp, height = 132.dp)
+                .size(width = 220.dp, height = 220.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(MiuixTheme.colorScheme.surfaceContainerHigh),
             contentAlignment = Alignment.Center,
