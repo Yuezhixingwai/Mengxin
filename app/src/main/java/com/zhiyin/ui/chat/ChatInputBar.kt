@@ -1,4 +1,4 @@
-﻿package com.zhiyin.ui.chat
+package com.zhiyin.ui.chat
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -172,7 +172,7 @@ fun ChatInputBar(
     val stickerPick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             val copied = ContentCopy.copyToCache(context, it, "sticker")
-            val bmp = copied?.let { c -> android.graphics.BitmapFactory.decodeFile(c.path) }
+            val bmp = copied?.let { c -> com.zhiyin.data.ImageUtils.decodeSampled(c.path, 512) }
             if (bmp == null) {
                 onLocalToast("添加失败：无法读取图片")
             } else {

@@ -104,7 +104,8 @@ object PlazaApi {
             val buf = ByteArray(8192)
             while (!inf.finished()) {
                 val n = inf.inflate(buf)
-                if (n == 0 && inf.needsInput()) break
+                if (n == 0) throw IllegalArgumentException("无效的人设压缩数据")
+                if (bos.size() + n > 8 * 1024 * 1024) throw IllegalArgumentException("人设数据过大")
                 bos.write(buf, 0, n)
             }
             inf.end()

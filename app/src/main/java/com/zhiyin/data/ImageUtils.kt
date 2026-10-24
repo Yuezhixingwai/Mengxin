@@ -44,6 +44,7 @@ object ImageUtils {
             cur.compress(Bitmap.CompressFormat.PNG, 100, baos)
             out = baos.toByteArray()
             if (cur !== bmp) cur.recycle()
+            if (out.size <= maxBytes || curMax <= 128) break
             curMax = (curMax * 0.8f).toInt().coerceAtLeast(128)
         } while (out.size > maxBytes && curMax >= 128)
         return out

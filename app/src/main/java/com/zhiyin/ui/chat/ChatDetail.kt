@@ -391,7 +391,7 @@ fun ChatDetailScreen(
                     bitmap = it,
                     contentDescription = "聊天背景",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().then(if (hasBg) Modifier.hazeSource(hazeState) else Modifier),
                 )
             }
         } else if (personaBgActive) {
@@ -399,7 +399,7 @@ fun ChatDetailScreen(
                 url = personaBgUrl,
                 contentDescription = "人设背景",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().then(if (hasBg) Modifier.hazeSource(hazeState) else Modifier),
             )
         }
         Column(

@@ -197,7 +197,7 @@ fun GroupChatScreen(
                 bitmap = it,
                 contentDescription = "聊天背景",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().hazeSource(hazeState),
             )
         }
         Column(

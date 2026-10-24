@@ -1232,7 +1232,7 @@ private fun ChatListScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(top = 4.dp, bottom = 88.dp),
         ) {
-            itemsIndexed(conversations, key = { _, c -> c.key }) { index, conv ->
+            itemsIndexed(conversations, key = { _, c -> if (c.isGroup) "group_${c.key}" else "friend_${c.friendId}" }) { index, conv ->
                 ConversationRow(
                     conv = conv,
                     onOpen = { onConversation(conv) },
