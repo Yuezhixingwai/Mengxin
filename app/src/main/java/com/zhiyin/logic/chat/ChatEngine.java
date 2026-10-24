@@ -1345,7 +1345,8 @@ public class ChatEngine {
     private static void pollPendingPhoto(Context ctx, String sid, String personaName) {
         new Thread(() -> {
             try {
-                for (int i = 0; i < 20; i++) {
+                // 万相图生图实测 40~60s，轮询窗口给足 90s 左右（每 2s 一次），避免刚好错过。
+                for (int i = 0; i < 45; i++) {
                     Thread.sleep(i == 0 ? 3500L : 2000L);
                     String t = token(ctx);
                     if (t == null || t.isEmpty()) return;

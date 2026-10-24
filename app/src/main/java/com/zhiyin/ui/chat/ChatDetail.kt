@@ -1015,9 +1015,17 @@ private fun ImageBubble(
 ) {
     val ctx = LocalContext.current
     val localPath = remember(bubble.path) { java.util.concurrent.atomic.AtomicReference<String?>(null) }
-    val bmp by produceState<ImageBitmap?>(initialValue = null, bubble.path) {
+    // 失败重试计数：点灰块可以再试一次（服务端图可能刚好没下完/网络抖）
+    var retry by remember(bubble.path) { mutableStateOf(0) }
+    val bmp by produceState<ImageBitmap?>(initialValue = null, bubble.path, retry) {
         value = withContext(Dispatchers.IO) {
-            val local = resolveChatImageFile(ctx, bubble.path)
+            var local: String? = null
+            // 首次失败自动重试一次（间隔 800ms），仍失败则显示可点击的占位
+            for (attempt in 0..1) {
+                local = resolveChatImageFile(ctx, bubble.path)
+                if (local != null) break
+                if (attempt == 0) try { Thread.sleep(800) } catch (_: Exception) {}
+            }
             localPath.set(local)
             if (local != null) decodeSampled(local, 720)?.asImageBitmap() else null
         }
@@ -1027,7 +1035,7 @@ private fun ImageBubble(
         modifier = Modifier.combinedClickable(
             onClick = {
                 val p = localPath.get()
-                if (p != null) onPreview(PreviewTarget.FileImage(p))
+                if (p != null) onPreview(PreviewTarget.FileImage(p)) else retry += 1
             },
             onLongClick = onLongPress,
         ),
@@ -1046,7 +1054,15 @@ private fun ImageBubble(
             modifier = Modifier
                 .size(width = 160.dp, height = 120.dp)
                 .background(MiuixTheme.colorScheme.surfaceContainerHigh),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "图片加载失败\n点一下重试",
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
     }
 }
 
