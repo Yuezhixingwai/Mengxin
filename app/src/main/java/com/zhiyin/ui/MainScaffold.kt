@@ -121,6 +121,7 @@ import com.zhiyin.ui.settings.FeedbackScreen
 import com.zhiyin.ui.settings.GlobalBackgroundScreen
 import com.zhiyin.ui.settings.PrivacyScreen
 import com.zhiyin.ui.settings.ProfileEditScreen
+import com.zhiyin.ui.settings.PhoneAgentScreen
 import com.zhiyin.ui.settings.SearchSettingsScreen
 import com.zhiyin.ui.settings.WalletScreen
 import com.zhiyin.ui.settings.WechatBindScreen
@@ -168,6 +169,7 @@ sealed interface Overlay {
     data object Invite : Overlay
     data class Group(val name: String, val members: List<String>?) : Overlay
     data object Settings : Overlay
+    data object PhoneAgent : Overlay
     data object AddFriend : Overlay
     data class FriendSettings(val friend: FriendManager.Friend) : Overlay
     data object CreateGroup : Overlay
@@ -286,6 +288,14 @@ fun MainScaffold(appVm: AppViewModel) {
 
     LaunchedEffect(overlayStack.size, currentTab) {
         if (overlay == null) chatListVm.refresh()
+    }
+    LaunchedEffect(overlayStack.size, currentTab) {
+        if (overlay == null && currentTab == 1) {
+            while (true) {
+                chatListVm.pollExternalHistory()
+                kotlinx.coroutines.delay(10_000L)
+            }
+        }
     }
 
     BackHandler(enabled = overlay != null) { pop() }
@@ -427,6 +437,7 @@ fun MainScaffold(appVm: AppViewModel) {
                         },
                         onOpenStickerShop = { push(Overlay.StickerShop) },
                         onOpenCall = { openCallGuarded(o.name, o.desc, o.id) },
+                        onOpenPhoneAgent = { push(Overlay.PhoneAgent) },
                     )
                     is Overlay.Call -> com.zhiyin.ui.call.CallScreen(
                         personaName = o.name,
@@ -458,7 +469,9 @@ fun MainScaffold(appVm: AppViewModel) {
                         onOpenPreferences = { push(Overlay.Preferences) },
                         onOpenStickerShop = { push(Overlay.StickerShop) },
                         onOpenGlobalBackground = { push(Overlay.GlobalBackground) },
+                        onOpenPhoneAgent = { push(Overlay.PhoneAgent) },
                     )
+                    Overlay.PhoneAgent -> PhoneAgentScreen(onBack = { pop() })
                     Overlay.AddFriend -> AddFriendScreen(
                         appVm = appVm,
                         onBack = { pop() },
@@ -1050,7 +1063,7 @@ private fun MainContent(
                         1 -> ChatListScreen(
                             conversations = conversations,
                             onConversation = onOpenConversation,
-                            onRefresh = { chatListVm.refresh() },
+                            onRefresh = { chatListVm.refresh(forceExternal = true) },
                             onRemoveConversation = { removeConv = it },
                         )
                         2 -> ContactsScreen(

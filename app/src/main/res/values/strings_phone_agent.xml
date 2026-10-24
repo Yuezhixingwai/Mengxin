@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_agent_accessibility_desc">用于执行你启动的手机助手任务，并在打开你选择的应用时显示应用锁。可随时在设置中关闭权限。</string>
+</resources>

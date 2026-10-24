@@ -191,6 +191,7 @@ fun GroupChatScreen(
             .fillMaxSize()
             .background(MiuixTheme.colorScheme.surface),
     ) {
+        Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
         bgBmp?.let {
             Image(
                 bitmap = it,
@@ -207,8 +208,7 @@ fun GroupChatScreen(
         RubberBandBox(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .then(if (bgBmp == null) Modifier.hazeSource(hazeState) else Modifier),
+                .fillMaxWidth(),
         ) {
         LazyColumn(
             state = listState,
@@ -255,22 +255,21 @@ fun GroupChatScreen(
         }
         }
 
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .then(if (bgBmp == null) {
+                .then(
                     Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeDefaults.style(
-                            backgroundColor = MiuixTheme.colorScheme.surface.copy(alpha = 0.88f),
-                            blurRadius = 18.dp,
+                            backgroundColor = MiuixTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            blurRadius = 24.dp,
                             noiseFactor = 0.06f,
                         ),
                     )
-                } else {
-                    Modifier
-                })
+                )
                 .onSizeChanged { inputBarHeight = with(density) { it.height.toDp() } }
                 .navigationBarsPadding()
                 .imePadding(),
@@ -582,9 +581,13 @@ private fun GroupMessageRow(
             if (memberNames.contains(candidate)) {
                 speakerName = candidate
                 text = match.groupValues[2]
+            } else if (candidate == "群成员") {
+                // Older model replies used a literal placeholder. The real speaker cannot
+                // be recovered from that record, but the placeholder is not message text.
+                text = match.groupValues[2]
             }
         }
-        if (speakerName == null) speakerName = memberNames.firstOrNull()
+        if (speakerName == null) speakerName = "群成员"
     }
     MessageEntrance(mine = mine, animate = animateIn) {
         Row(

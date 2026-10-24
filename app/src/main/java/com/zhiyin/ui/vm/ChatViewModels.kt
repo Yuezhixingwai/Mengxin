@@ -17,6 +17,7 @@ import com.zhiyin.logic.data.PersonaManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 data class UConv(
     val key: String,
     val name: String,
@@ -30,6 +31,9 @@ data class UConv(
     val hasMessages: Boolean,
 )
 class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Listener {
+
+    private val externalSyncPending = AtomicBoolean(false)
+    @Volatile private var lastExternalSyncAt = 0L
 
     var conversations by mutableStateOf<List<UConv>>(emptyList())
         private set
@@ -52,13 +56,14 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
 
     override fun onSendingChanged(sending: Boolean) {}
 
-    fun refresh() {
+    fun refresh(forceExternal: Boolean = false) {
         val ctx = getApplication<Application>()
         val token = com.zhiyin.data.AppSession.token()
         if (token.isEmpty()) {
             loading = false
             return
         }
+        syncExternalHistory(ctx, forceExternal)
         loading = true
         FriendManager.getAll(token, object : FriendManager.Callback {
             override fun onResult(list: MutableList<FriendManager.Friend>?) {
@@ -115,6 +120,48 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
                 loading = false
             }
         })
+    }
+
+    fun pollExternalHistory() {
+        syncExternalHistory(getApplication(), false)
+    }
+
+    private fun syncExternalHistory(ctx: Application, force: Boolean) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastExternalSyncAt < 10_000L) return
+        if (!externalSyncPending.compareAndSet(false, true)) return
+        lastExternalSyncAt = now
+        Thread {
+            var changed = false
+            try {
+                com.zhiyin.logic.net.ApiGateway.ensureMemoryServiceUrl(ctx)
+                val base = com.zhiyin.logic.net.ApiGateway.getMemoryServiceUrl()
+                val userId = com.zhiyin.logic.net.ApiGateway.getUserId(ctx)
+                if (base.isNotEmpty() && userId.isNotEmpty()) {
+                    val response = com.zhiyin.logic.net.ApiGateway.memoryRequestSync(
+                        "$base/api/external-messages", "GET", null, userId)
+                    val messages = org.json.JSONObject(response).optJSONArray("messages")
+                    val batches = linkedMapOf<String, MutableList<MsgRepo.RemoteMsg>>()
+                    if (messages != null) for (i in 0 until messages.length()) {
+                        val m = messages.optJSONObject(i) ?: continue
+                        val sid = m.optString("sessionId", "")
+                        val role = if (m.optString("role") == "user") "user" else "ai"
+                        val content = m.optString("content", "")
+                        if (!sid.startsWith("persona_") || content.isBlank()) continue
+                        batches.getOrPut(sid) { mutableListOf() }.add(
+                            MsgRepo.RemoteMsg(role, content, m.optLong("time", 0)))
+                    }
+                    for ((sid, batch) in batches) {
+                        if (MsgRepo.addRemoteBatchIfAbsent(ctx, sid, batch)) changed = true
+                    }
+                }
+            } catch (_: Exception) {
+                // The local chat remains usable when the memory service is offline.
+            } finally {
+                externalSyncPending.set(false)
+                if (changed) android.os.Handler(android.os.Looper.getMainLooper()).post { refresh() }
+            }
+        }.start()
     }
 
     companion object {
@@ -174,6 +221,16 @@ class ChatViewModel(
         MsgRepo.setActiveSession(null)
     }
 
+    private val remoteSyncPending = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    fun syncRemoteMessages() {
+        if (!remoteSyncPending.compareAndSet(false, true)) return
+        MsgRepo.syncFromMemoryService(getApplication(), sessionId) { changed ->
+            remoteSyncPending.set(false)
+            if (changed) reload()
+        }
+    }
+
     fun reload() {
         val ctx = getApplication<Application>()
         messages = MsgRepo.getAll(ctx, sessionId).mapIndexed { i, m ->
@@ -193,16 +250,29 @@ class ChatViewModel(
 
     override fun onSendingChanged(sending: Boolean) {}
 
-    private var lastSentText: String? = null
-    private var lastSentAt = 0L
-
     fun send(text: String) {
-        // 防手抖/重组重复提交：同一句话 800ms 内只发一次（不同内容不受影响）
-        val now = System.currentTimeMillis()
-        if (text == lastSentText && now - lastSentAt < 800L) return
-        lastSentText = text
-        lastSentAt = now
         ChatEngine.sendText(getApplication(), persona, text)
+    }
+
+    fun sendPhoneTask(text: String) {
+        val ctx = getApplication<Application>()
+        MsgRepo.add(ctx, sessionId, "user", text)
+        val service = com.zhiyin.service.PhoneAgentService.current
+        if (service == null) {
+            MsgRepo.add(ctx, sessionId, "ai", "先到设置里的手机助手开启无障碍权限，我才能帮你操作手机。")
+            reload()
+            return
+        }
+        MsgRepo.add(ctx, sessionId, "ai", "好，我去看看手机上的情况。")
+        reload()
+        val started = service.startTask(text, personaName, personaDesc) { result ->
+            MsgRepo.add(ctx, sessionId, "ai", result)
+            android.os.Handler(android.os.Looper.getMainLooper()).post { reload() }
+        }
+        if (!started) {
+            MsgRepo.add(ctx, sessionId, "ai", "这次操作没能启动，请确认已登录且没有其他手机任务正在运行。")
+            reload()
+        }
     }
 
     fun sendSticker(marker: String) = ChatEngine.sendText(getApplication(), persona, marker)

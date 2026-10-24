@@ -22,7 +22,7 @@ import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManagerFactory;
 
 public class ApiGateway {
-    public static String ZHIYIN_BASE = "https://api.zhiyin.yuezhixingwai.cn";
+    public static String ZHIYIN_BASE = com.zhiyin.BuildConfig.API_BASE_URL;
 
     public static final String OFFICIAL_SITE = "https://zhiyin.zhendeqiang.top";
 
@@ -31,21 +31,33 @@ public class ApiGateway {
     public static void init(Context ctx) {
         SharedPreferences sp = ctx.getSharedPreferences("zhiyin_config", Context.MODE_PRIVATE);
         String saved = sp.getString("server_url", null);
-        if (saved != null && !saved.isEmpty()) ZHIYIN_BASE = saved;
+        if (isOldLocalTestUrl(saved)) {
+            sp.edit().remove("server_url").apply();
+            saved = null;
+        }
+        if (!com.zhiyin.BuildConfig.LOCAL_API && saved != null && !saved.isEmpty()) ZHIYIN_BASE = saved;
         String memUrl = sp.getString("memory_service_url", null);
+        if (isOldLocalTestUrl(memUrl)) {
+            sp.edit().remove("memory_service_url").apply();
+            memUrl = null;
+        }
         if (memUrl != null && !memUrl.isEmpty()) memoryServiceUrl = memUrl;
         CookieStore.init(ctx);
         com.zhiyin.logic.data.SessionStore.init(ctx);
     }
 
     public static void setServerUrl(Context ctx, String url) {
+        if (com.zhiyin.BuildConfig.LOCAL_API) return;
         ZHIYIN_BASE = url;
         ctx.getSharedPreferences("zhiyin_config", Context.MODE_PRIVATE).edit().putString("server_url", url).apply();
     }
 
     private static String memoryServiceUrl = "";
-    public static String getMemoryServiceUrl() { return memoryServiceUrl; }
+    public static String getMemoryServiceUrl() {
+        return com.zhiyin.BuildConfig.LOCAL_API ? com.zhiyin.BuildConfig.LOCAL_MEMORY_URL : memoryServiceUrl;
+    }
     public static void setMemoryServiceUrl(Context ctx, String url) {
+        if (com.zhiyin.BuildConfig.LOCAL_API) return;
         if (url != null) {
             memoryServiceUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
             ctx.getSharedPreferences("zhiyin_config", Context.MODE_PRIVATE).edit().putString("memory_service_url", memoryServiceUrl).apply();
@@ -54,9 +66,18 @@ public class ApiGateway {
     public static void loadMemoryServiceUrl(Context ctx) {
         SharedPreferences sp = ctx.getSharedPreferences("zhiyin_config", Context.MODE_PRIVATE);
         memoryServiceUrl = sp.getString("memory_service_url", "");
+        if (isOldLocalTestUrl(memoryServiceUrl)) {
+            memoryServiceUrl = "";
+            sp.edit().remove("memory_service_url").apply();
+        }
+    }
+    private static boolean isOldLocalTestUrl(String url) {
+        return url != null && (url.startsWith("http://192.168.1.4:9002")
+                || url.startsWith("http://192.168.1.4:9005"));
     }
     private static volatile long lastMemUrlFetchTime = 0L;
     public static void ensureMemoryServiceUrl(Context ctx) {
+        if (com.zhiyin.BuildConfig.LOCAL_API) return;
         long now = System.currentTimeMillis();
         boolean hasValid = memoryServiceUrl != null && !memoryServiceUrl.isEmpty();
         if (hasValid && (now - lastMemUrlFetchTime) < 300000L) return;

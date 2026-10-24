@@ -113,16 +113,19 @@ public class ChatEngine {
 
     public static void sendText(Context ctx, Persona p, String text) {
         if (text == null || text.isEmpty()) return;
-        MsgRepo.add(ctx, "persona_" + p.name, "user", text);
+        long sentAt = MsgRepo.addWithTime(ctx, "persona_" + p.name, "user", text);
         notifyChanged();
-        if (sSending) {
-            sQueue.offer(new String[]{p.name, p.desc, p.pat, text});
-            return;
+        synchronized (sQueue) {
+            if (sSending) {
+                sQueue.offer(new String[]{p.name, p.desc, p.pat, text, String.valueOf(sentAt)});
+                return;
+            }
+            sSending = true;
         }
-        executeSend(ctx, p, text);
+        executeSend(ctx, p, text, sentAt);
     }
 
-    private static void executeSend(Context ctx, Persona p, String text) {
+    private static void executeSend(Context ctx, Persona p, String text, long sentAt) {
         sSending = true;
         notifySending(true);
         notifyTyping(true);
@@ -135,6 +138,23 @@ public class ChatEngine {
             try {
                 JSONArray messages = new JSONArray();
                 String sysContent = buildSystemPrompt(ctx, p);
+                JSONArray appLockApps = new JSONArray();
+                if (ctx.getSharedPreferences("zhiyin_phone_agent", Context.MODE_PRIVATE)
+                        .getBoolean("ai_lock_" + p.name, false)
+                        && com.zhiyin.service.AppLockStore.INSTANCE.hasPin(ctx)
+                        && com.zhiyin.service.PhoneAgentService.Companion.getCurrent() != null) {
+                    java.util.Set<String> allowed = com.zhiyin.service.AppLockStore.INSTANCE.aiAllowedPackages(ctx);
+                    if (!allowed.isEmpty()) {
+                        for (String pkg : allowed) {
+                            if (com.zhiyin.service.AppLockStore.INSTANCE.isLocked(ctx, pkg)) continue;
+                            String label;
+                            try { label = ctx.getPackageManager().getApplicationLabel(
+                                    ctx.getPackageManager().getApplicationInfo(pkg, 0)).toString(); }
+                            catch (Exception ignored) { continue; }
+                            appLockApps.put(new JSONObject().put("name", label).put("pkg", pkg));
+                        }
+                    }
+                }
                 if (!sysContent.isEmpty()) {
                     JSONObject sys = new JSONObject();
                     sys.put("role", "system");
@@ -155,6 +175,7 @@ public class ChatEngine {
                 int hStart = Math.max(0, history.size() - 30);
                 for (int hi = hStart; hi < history.size(); hi++) {
                     String[] msg = history.get(hi);
+                    if (sentAt > 0 && Long.parseLong(msg[2]) > sentAt) continue;
                     String clean = cleanHistoryContent(ctx, msg[1]);
                     if (clean == null) continue;
                     String role = msg[0].equals("ai") ? "assistant" : msg[0];
@@ -177,6 +198,7 @@ public class ChatEngine {
                 // 声明本客户端能渲染服务端下发的远程图片（2.3.53+）。
                 // 不开这个开关服务端不会让人设发照片，只会把 [PHOTO:] 标记剥掉。
                 body.put("photo_support", 1);
+                if (appLockApps.length() > 0) body.put("app_lock_apps", appLockApps);
 
                 // 病娇模式：带 yandere_mode + 使用情况上下文（AI据此吃醋）
                 if (com.zhiyin.yandere.YandereManager.INSTANCE.isEnabled(ctx)) {
@@ -199,6 +221,41 @@ public class ChatEngine {
                 String content = "";
                 if (json.has("choices"))
                     content = json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "");
+
+                // An AI marker is only a request. The device verifies persona opt-in, local PIN,
+                // accessibility availability and the user's per-app allowlist before any lock.
+                java.util.regex.Matcher appLockMarker = Pattern.compile(
+                        "\\[APP_LOCK:([a-zA-Z0-9_.]+)\\|([^\\]\\r\\n]{1,100})\\]").matcher(content);
+                String appLockPackage = null;
+                String appLockReason = null;
+                JSONObject structuredLock = json.optJSONObject("app_lock_request");
+                if (structuredLock != null) {
+                    appLockPackage = structuredLock.optString("pkg", "");
+                    appLockReason = structuredLock.optString("reason", "").trim();
+                }
+                if (appLockMarker.find()) {
+                    appLockPackage = appLockMarker.group(1);
+                    appLockReason = appLockMarker.group(2).trim();
+                }
+                content = content.replaceAll("\\[APP_LOCK:[^\\]\\r\\n]*\\]", "").trim();
+                if (appLockPackage != null &&
+                        ctx.getSharedPreferences("zhiyin_phone_agent", Context.MODE_PRIVATE)
+                                .getBoolean("ai_lock_" + p.name, false) &&
+                        com.zhiyin.service.PhoneAgentService.Companion.getCurrent() != null &&
+                        !com.zhiyin.service.AppLockStore.INSTANCE.isLocked(ctx, appLockPackage) &&
+                        com.zhiyin.service.AppLockStore.INSTANCE.lockFromAi(ctx, appLockPackage, p.name, appLockReason)) {
+                    String appName;
+                    try { appName = ctx.getPackageManager().getApplicationLabel(
+                            ctx.getPackageManager().getApplicationInfo(appLockPackage, 0)).toString(); }
+                    catch (Exception ignored) { appName = appLockPackage; }
+                    MsgRepo.add(ctx, sid, "ai", "[应用锁] " + p.name + "给你的" + appName + "上锁了。理由：" + appLockReason);
+                    notifyChanged();
+                    MAIN.post(() -> {
+                        com.zhiyin.service.PhoneAgentService service =
+                                com.zhiyin.service.PhoneAgentService.Companion.getCurrent();
+                        if (service != null) service.refreshAppLock();
+                    });
+                }
 
                 // 人设自动发照片：服务端异步生图（万相约10s），这里后台短轮询领取，
                 // 领到就补一条 [image]<url> 的 AI 消息；文字回复照常先显示，不阻塞。
@@ -253,6 +310,7 @@ public class ChatEngine {
                         if (si != null) stickerText = "[STICKER:" + si.fileName + "]" + stickerText;
                     }
                     List<String> segs = splitText(stickerText);
+                    if (segs.size() > 1) MsgRepo.expectSplitReply(sid, displayReply);
                     int baseDelay = hasThinking ? 1000 : 0;
                     for (int i = 0; i < segs.size(); i++) {
                         final String seg = segs.get(i);
@@ -281,15 +339,18 @@ public class ChatEngine {
     }
 
     private static void finishSend() {
-        sSending = false;
+        String[] next;
+        synchronized (sQueue) {
+            next = sQueue.poll();
+            sSending = next != null;
+        }
         notifyTyping(false);
-        notifySending(false);
-        String[] next = sQueue.poll();
+        notifySending(next != null);
         if (next != null) {
             MAIN.postDelayed(() -> {
                 android.content.Context appCtx = com.zhiyin.logic.AppHolder.app();
                 if (appCtx != null) {
-                    executeSend(appCtx, new Persona(next[0], next[1], next[2]), next[3]);
+                    executeSend(appCtx, new Persona(next[0], next[1], next[2]), next[3], Long.parseLong(next[4]));
                 } else {
                     finishSend();
                 }
@@ -368,6 +429,7 @@ public class ChatEngine {
                 if (officialQuota(ctx)) body.put("use_official", 1);
                 body.put("persona_name", p.name);
                 body.put("self_upload", 1);
+                body.put("regenerate", 1);
 
                 String resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/chat", body.toString(), fToken);
                 JSONObject json = new JSONObject(resp);
@@ -379,6 +441,17 @@ public class ChatEngine {
                 String content = "";
                 if (json.has("choices"))
                     content = json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "");
+                if (content.trim().isEmpty()) {
+                    resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/chat", body.toString(), fToken);
+                    json = new JSONObject(resp);
+                    if (json.has("error")) {
+                        notifyNotice("重新生成失败: " + json.optString("error"));
+                        finishSend();
+                        return;
+                    }
+                    if (json.has("choices"))
+                        content = json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "");
+                }
                 if (content.isEmpty()) {
                     notifyNotice("重新生成失败：返回为空");
                     finishSend();
@@ -697,14 +770,17 @@ public class ChatEngine {
                 String marker = "(转账 " + fmtMoney(amount) + "元" + (noteSafe.isEmpty() ? "" : "|" + noteSafe) + ")";
                 String receipt = "(收款 " + fmtMoney(amount) + "元)";
                 MAIN.post(() -> {
-                    MsgRepo.add(ctx, sid, "user", marker);
+                    long sentAt = MsgRepo.addWithTime(ctx, sid, "user", marker);
                     MsgRepo.add(ctx, sid, "ai", receipt);
                     notifyChanged();
-                    if (sSending) {
-                        sQueue.offer(new String[]{p.name, p.desc, p.pat, marker});
-                    } else {
-                        executeSend(ctx, p, marker);
+                    synchronized (sQueue) {
+                        if (sSending) {
+                            sQueue.offer(new String[]{p.name, p.desc, p.pat, marker, String.valueOf(sentAt)});
+                            return;
+                        }
+                        sSending = true;
                     }
+                    executeSend(ctx, p, marker, sentAt);
                 });
             } catch (Exception e) {
                 notifyNotice("转账失败: " + e.getMessage());
@@ -737,13 +813,16 @@ public class ChatEngine {
                 String marker = "(红包 " + fmtMoney(total) + "元" + (noteSafe.isEmpty() ? "" : "|" + noteSafe)
                         + (packetId > 0 ? "|#" + packetId : "") + ")";
                 MAIN.post(() -> {
-                    MsgRepo.add(ctx, sid, "user", marker);
+                    long sentAt = MsgRepo.addWithTime(ctx, sid, "user", marker);
                     notifyChanged();
-                    if (sSending) {
-                        sQueue.offer(new String[]{p.name, p.desc, p.pat, marker});
-                    } else {
-                        executeSend(ctx, p, marker);
+                    synchronized (sQueue) {
+                        if (sSending) {
+                            sQueue.offer(new String[]{p.name, p.desc, p.pat, marker, String.valueOf(sentAt)});
+                            return;
+                        }
+                        sSending = true;
                     }
+                    executeSend(ctx, p, marker, sentAt);
                 });
             } catch (Exception e) {
                 notifyNotice("发红包失败: " + e.getMessage());
@@ -817,6 +896,7 @@ public class ChatEngine {
                         systemPrompt.append(memberName).append(" 的人设: ").append(persona).append("\n");
                     }
                 }
+                final String baseGroupPrompt = systemPrompt.toString();
 
                 if (mentionAll) {
                     systemPrompt.append("\n用户使用了@所有人，请以下每一位成员都分别回复这条消息，每人一条，必须全部回复、一个都不能少：");
@@ -859,6 +939,31 @@ public class ChatEngine {
                 body.put("skip_shorten", true);
                 if (officialQuota) body.put("use_official", 1);
 
+                // Mentions have a known speaker. Ask once per actual member instead of trusting
+                // the model to invent and label several different voices in one answer.
+                if (mentionAll || !mentionedNames.isEmpty()) {
+                    for (String member : g.members) {
+                        if (!mentionedNames.contains(member)) continue;
+                        try {
+                            String memberReply = requestTargetedGroupReply(
+                                    token, body, messages, baseGroupPrompt, member);
+                            if (memberReply.isEmpty()) continue;
+                            for (String segment : splitText(memberReply)) {
+                                if (segment.isEmpty()) continue;
+                                MsgRepo.add(ctx, sid, "ai", "[" + member + "] " + segment);
+                                notifyChanged();
+                                try { Thread.sleep(350L); } catch (InterruptedException ignored) { }
+                            }
+                        } catch (Exception memberError) {
+                            MsgRepo.add(ctx, sid, "ai", "[错误] " + member + " 回复失败: " + memberError.getMessage());
+                            notifyChanged();
+                        }
+                    }
+                    notifyTyping(false);
+                    notifySending(false);
+                    return;
+                }
+
                 String resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/chat", body.toString(), token);
                 JSONObject json = new JSONObject(resp);
                 if (json.has("error")) {
@@ -872,32 +977,59 @@ public class ChatEngine {
                 if (json.has("choices"))
                     reply = json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "");
 
+                // For an ordinary group turn, retry as one selected member if the first
+                // answer supplied no valid identity (for example literal "[群成员]").
+                boolean hasRealSpeaker = false;
+                for (String member : g.members) {
+                    if (member != null && !member.isEmpty() &&
+                            (reply.contains("[" + member + "]") || reply.contains("【" + member + "】") ||
+                             reply.contains(member + "：") || reply.contains(member + ":"))) {
+                        hasRealSpeaker = true;
+                        break;
+                    }
+                }
+                if (!hasRealSpeaker && g.members.length > 0) {
+                    String selected = g.members[java.util.concurrent.ThreadLocalRandom.current().nextInt(g.members.length)];
+                    String memberReply = requestTargetedGroupReply(
+                            token, body, messages, baseGroupPrompt, selected);
+                    for (String segment : splitText(memberReply)) {
+                        if (!segment.isEmpty()) {
+                            MsgRepo.add(ctx, sid, "ai", "[" + selected + "] " + segment);
+                            notifyChanged();
+                        }
+                    }
+                    notifyTyping(false);
+                    notifySending(false);
+                    return;
+                }
+
                 List<String[]> speakerMsgs = new ArrayList<>();
-                Pattern speakerPattern = Pattern.compile("[\\[【]([^\\]】]+)[\\]】]([^\\[【]+)");
-                Matcher spMatcher = speakerPattern.matcher(reply);
+                // Only real member labels delimit replies. Sticker and media markers belong to the body.
+                StringBuilder memberLabels = new StringBuilder();
+                for (String member : g.members) {
+                    if (member == null || member.trim().isEmpty()) continue;
+                    if (memberLabels.length() > 0) memberLabels.append("|");
+                    memberLabels.append(Pattern.quote(member.trim()));
+                }
+                Pattern speakerPattern = memberLabels.length() == 0 ? null : Pattern.compile(
+                        "[\\[【](" + memberLabels + ")[\\]】]\\s*[:：]?\\s*");
+                Matcher spMatcher = speakerPattern == null ? null : speakerPattern.matcher(reply);
                 boolean foundSpeaker = false;
                 boolean firstSpeaker = true;
                 String leadingText = "";
-                while (spMatcher.find()) {
+                while (spMatcher != null && spMatcher.find()) {
                     foundSpeaker = true;
                     if (firstSpeaker) {
                         firstSpeaker = false;
                         leadingText = reply.substring(0, spMatcher.start()).trim();
                     }
                     String speaker = spMatcher.group(1).trim();
-                    String msg = spMatcher.group(2).trim();
-                    boolean isMember = false;
-                    for (String member : g.members) {
-                        if (member.equals(speaker)) {
-                            isMember = true;
-                            break;
-                        }
-                    }
-                    // [STICKER:xxx] 等业务标记不是说话人，不能拿来当头像和昵称。
-                    if (isMember && !msg.isEmpty()) {
+                    int nextLabel = reply.length();
+                    Matcher nextMatcher = speakerPattern.matcher(reply);
+                    if (nextMatcher.find(spMatcher.end())) nextLabel = nextMatcher.start();
+                    String msg = reply.substring(spMatcher.end(), nextLabel).trim();
+                    if (!msg.isEmpty()) {
                         speakerMsgs.add(new String[]{speaker, msg});
-                    } else if (!msg.isEmpty()) {
-                        speakerMsgs.add(new String[]{null, msg});
                     }
                 }
                 if (!foundSpeaker) {
@@ -907,13 +1039,7 @@ public class ChatEngine {
                         Matcher lm = Pattern.compile("^([^：:]{1,12})[：:]\\s*(.+)$").matcher(ln);
                         if (lm.find()) {
                             String name = lm.group(1).trim();
-                            boolean isMember = false;
-                            for (String mn : g.members) {
-                                if (mn.contains(name) || name.contains(mn)) {
-                                    isMember = true;
-                                    break;
-                                }
-                            }
+                            boolean isMember = java.util.Arrays.asList(g.members).contains(name);
                             if (isMember) {
                                 speakerMsgs.add(new String[]{name, lm.group(2).trim()});
                                 foundSpeaker = true;
@@ -974,6 +1100,25 @@ public class ChatEngine {
         }).start();
     }
 
+    private static String requestTargetedGroupReply(String token, JSONObject body,
+            JSONArray messages, String basePrompt, String member) throws Exception {
+        JSONArray targetedMessages = new JSONArray(messages.toString());
+        targetedMessages.getJSONObject(0).put("content", basePrompt +
+                "\n本轮只由群成员「" + member + "」回答。你就是「" + member + "」，严格使用其人设和语气。" +
+                "不要替其他成员发言，不要输出[群成员]、名字标签或角色说明，只输出你的回复正文。");
+        JSONObject targetedBody = new JSONObject(body.toString());
+        targetedBody.put("messages", targetedMessages);
+        JSONObject result = new JSONObject(ApiGateway.postSync(
+                ApiGateway.ZHIYIN_BASE + "/api/chat", targetedBody.toString(), token));
+        if (result.has("error")) throw new IllegalStateException(result.optString("error"));
+        JSONArray choices = result.optJSONArray("choices");
+        if (choices == null || choices.length() == 0) throw new IllegalStateException("没有收到回复");
+        String reply = choices.getJSONObject(0).getJSONObject("message").optString("content", "").trim();
+        reply = reply.replaceFirst("^\\s*[\\[【](?:群成员|" + Pattern.quote(member) + ")[\\]】]\\s*[:：]?\\s*", "");
+        reply = reply.replaceFirst("^\\s*" + Pattern.quote(member) + "\\s*[:：]\\s*", "");
+        return reply.trim();
+    }
+
     public static void addGroupRedpacketReceipts(Context ctx, GroupInfo group, double total, int count) {
         if (group == null || group.members.length == 0 || count <= 0 || total <= 0) return;
         List<String> winners = new ArrayList<>(java.util.Arrays.asList(group.members));
@@ -998,9 +1143,7 @@ public class ChatEngine {
         if (mentionedNames != null && mentionedNames.size() == 1) {
             return mentionedNames.iterator().next();
         }
-        if (group != null && group.members.length > 0) {
-            return group.members[Math.floorMod(index, group.members.length)];
-        }
+        // Unlabelled multi-person replies cannot safely be attributed to a specific member.
         return "群成员";
     }
 

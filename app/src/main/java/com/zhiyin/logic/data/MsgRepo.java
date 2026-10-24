@@ -22,6 +22,9 @@ public class MsgRepo {
     // 会话越长越慢，表现为「发消息卡 + 越用越卡、重启才好」。
     // 现在主线程只改内存数组，落盘交给单线程串行异步执行，并在 80ms 内合并连续写入。
     private static final java.util.concurrent.ConcurrentHashMap<String, JSONArray> sMem = new java.util.concurrent.ConcurrentHashMap<>();
+    // 服务端保存完整回复，客户端会延迟逐句显示；同步期间不能先插入完整回复再删掉。
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> sPendingReply = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> sPendingReplyUntil = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.concurrent.ExecutorService sIo = java.util.concurrent.Executors.newSingleThreadExecutor();
 
     /** 取会话消息数组：优先内存缓存，未命中才读盘并缓存。需在 sLock 内调用，返回值为缓存引用（可直接改）。 */
@@ -62,6 +65,20 @@ public class MsgRepo {
 
     public static void setActiveSession(String sid) { activeSessionId = sid; }
     public static String getActiveSession() { return activeSessionId; }
+
+    public static void expectSplitReply(String sid, String fullText) {
+        if (sid == null || fullText == null) return;
+        sPendingReply.put(sid, normalizeMirrorText(fullText));
+        sPendingReplyUntil.put(sid, System.currentTimeMillis() + 120000L);
+    }
+
+    private static boolean isPendingSplitReply(String sid, String role, String content) {
+        if (!"ai".equals(role)) return false;
+        Long until = sPendingReplyUntil.get(sid);
+        if (until == null || until < System.currentTimeMillis()) return false;
+        String pending = sPendingReply.get(sid);
+        return pending != null && !pending.isEmpty() && pending.equals(normalizeMirrorText(content));
+    }
 
     /** 只保留最近 MAX_MSGS_PER_SESSION 条，淘汰最老的 */
     private static JSONArray trimTail(JSONArray arr) {
@@ -152,15 +169,22 @@ public class MsgRepo {
     }
 
     public static void add(Context ctx, String sid, String role, String content) {
+        addWithTime(ctx, sid, role, content);
+    }
+
+    public static long addWithTime(Context ctx, String sid, String role, String content) {
         try {
             JSONObject o = new JSONObject();
             o.put("role", role);
             o.put("content", content);
-            o.put("time", System.currentTimeMillis());
             o.put("read", sid.equals(activeSessionId));
             JSONArray snapshot;
             synchronized (sLock) {
                 JSONArray arr = loadArr(ctx, sid);
+                long now = System.currentTimeMillis();
+                JSONObject last = arr.optJSONObject(arr.length() - 1);
+                if (last != null) now = Math.max(now, last.optLong("time", 0) + 1);
+                o.put("time", now);
                 arr.put(o);
                 arr = trimTail(arr);
                 storeArr(ctx, sid, arr);
@@ -169,7 +193,8 @@ public class MsgRepo {
             // 预览档是轻量键，仍同步写；消息本体落盘已在后台单线程执行
             updatePreview(ctx, sid, snapshot);
             syncToMemoryService(ctx, sid, role, content, o.optLong("time", 0));
-        } catch (Exception ignored) {}
+            return o.optLong("time", 0);
+        } catch (Exception ignored) { return 0; }
     }
 
     public static boolean addRemoteIfAbsent(Context ctx, String sid, String role, String content, long time) {
@@ -222,7 +247,18 @@ public class MsgRepo {
                 }
                 if (changed) {
                     healLocalDupes(arr);
-                    arr = trimTail(arr);
+                    // External messages can arrive after newer APP messages. Keep the
+                    // actual conversation order and list preview based on timestamps.
+                    java.util.List<JSONObject> ordered = new java.util.ArrayList<>();
+                    for (int k = 0; k < arr.length(); k++) {
+                        JSONObject item = arr.optJSONObject(k);
+                        if (item != null) ordered.add(item);
+                    }
+                    java.util.Collections.sort(ordered,
+                            (a, b) -> Long.compare(a.optLong("time", 0), b.optLong("time", 0)));
+                    JSONArray sorted = new JSONArray();
+                    for (JSONObject item : ordered) sorted.put(item);
+                    arr = trimTail(sorted);
                     storeArr(ctx, sid, arr);
                     updatePreview(ctx, sid, arr);
                 }
@@ -237,6 +273,7 @@ public class MsgRepo {
     private static boolean mergeRemote(JSONArray arr, List<String> roles, List<String> norms,
                                        String sid, RemoteMsg m) {
         try {
+            if (isPendingSplitReply(sid, m.role, m.content)) return false;
             if (m.time > 0) {
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject o = arr.optJSONObject(i);
@@ -250,7 +287,9 @@ public class MsgRepo {
             String norm = normalizeMirrorText(m.content);
             if (!norm.isEmpty()) {
                 for (int i = 0; i < roles.size(); i++) {
-                    if (m.role.equals(roles.get(i)) && norm.equals(norms.get(i))) return false;
+                    JSONObject known = arr.optJSONObject(i);
+                    if (known != null && Math.abs(known.optLong("time", 0) - m.time) <= 10000
+                            && m.role.equals(roles.get(i)) && norm.equals(norms.get(i))) return false;
                 }
                 if ("ai".equals(m.role) && isMirrorOfKnown(roles, norms, -1, norm)) return false;
             } else {
@@ -266,6 +305,7 @@ public class MsgRepo {
             o.put("content", m.content);
             o.put("time", m.time > 0 ? m.time : System.currentTimeMillis());
             o.put("read", sid.equals(activeSessionId));
+            o.put("remote", true);
             arr.put(o);
             roles.add(m.role);
             norms.add(norm);
@@ -376,6 +416,42 @@ public class MsgRepo {
 
     public interface SyncCallback { void onSynced(boolean changed); }
 
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> sUploadedHistory = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Retry local-only history after an offline/failed upload; keep the original message times. */
+    private static void uploadLocalHistory(Context ctx, String sid, String memUrl, String userId) {
+        try {
+            JSONArray messages = new JSONArray();
+            synchronized (sLock) {
+                JSONArray local = loadArr(ctx, sid);
+                for (int i = Math.max(0, local.length() - 100); i < local.length(); i++) {
+                    JSONObject m = local.optJSONObject(i);
+                    if (m == null || m.optBoolean("remote", false)) continue;
+                    String role = m.optString("role", "");
+                    String content = m.optString("content", "");
+                    if ((!"user".equals(role) && !"ai".equals(role)) || content.trim().isEmpty()) continue;
+                    if (content.contains("|||THINK|||") || content.contains("|||SRC|||") ||
+                            content.startsWith("[错误]") || content.startsWith("Error ")) continue;
+                    long time = m.optLong("time", 0);
+                    if (time <= 0) continue;
+                    messages.put(new JSONObject().put("role", "ai".equals(role) ? "assistant" : role)
+                            .put("content", content).put("time", time).put("platform", "android_app"));
+                }
+            }
+            if (messages.length() == 0) return;
+            String body = new JSONObject().put("messages", messages).toString();
+            String fingerprint = android.util.Base64.encodeToString(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)), android.util.Base64.NO_WRAP);
+            String key = memUrl + "|" + userId + "|" + sid;
+            if (fingerprint.equals(sUploadedHistory.get(key))) return;
+            String response = ApiGateway.memoryRequestSync(memUrl + "/api/chat/" + java.net.URLEncoder.encode(sid, "UTF-8") + "/batch",
+                    "POST", body, userId);
+            if (new JSONObject(response).has("message")) sUploadedHistory.put(key, fingerprint);
+        } catch (Exception e) {
+            android.util.Log.w("MsgRepo", "retry local history failed: " + e.getMessage());
+        }
+    }
+
     public static void syncFromMemoryService(Context ctx, String sid, SyncCallback cb) {
         try {
             final Context fCtx = ctx;
@@ -388,6 +464,7 @@ public class MsgRepo {
                     if (memUrl != null && !memUrl.isEmpty()) {
                         String userId = com.zhiyin.logic.net.ApiGateway.getUserId(fCtx);
                         if (userId != null && !userId.isEmpty()) {
+                            uploadLocalHistory(fCtx, sessionId, memUrl, userId);
                             String resp = com.zhiyin.logic.net.ApiGateway.memoryRequestSync(
                                 memUrl + "/api/chat/" + java.net.URLEncoder.encode(sessionId, "UTF-8") + "?limit=100",
                                 "GET", null, userId);
@@ -500,6 +577,7 @@ public class MsgRepo {
     private static boolean mergeSynced(JSONArray localArr, List<String> knownRoles, List<String> knownNorms,
                                        String sessionId, RemoteMsg m) {
         try {
+            if (isPendingSplitReply(sessionId, m.role, m.content)) return false;
             long t = m.time;
             if (t > 0) {
                 for (int i = 0; i < localArr.length(); i++) {
@@ -515,7 +593,9 @@ public class MsgRepo {
             boolean dup = false;
             if (!rNorm.isEmpty()) {
                 for (int k = 0; k < knownNorms.size() && !dup; k++) {
-                    if (m.role.equals(knownRoles.get(k)) && rNorm.equals(knownNorms.get(k))) dup = true;
+                    JSONObject known = localArr.optJSONObject(k);
+                    if (known != null && Math.abs(known.optLong("time", 0) - t) <= 10000
+                            && m.role.equals(knownRoles.get(k)) && rNorm.equals(knownNorms.get(k))) dup = true;
                 }
                 if (!dup && "ai".equals(m.role) && isMirrorOfKnown(knownRoles, knownNorms, -1, rNorm)) dup = true;
             }
@@ -526,6 +606,7 @@ public class MsgRepo {
             o.put("content", m.content);
             o.put("time", t);
             o.put("read", sessionId.equals(activeSessionId));
+            o.put("remote", true);
             localArr.put(o);
             knownRoles.add(m.role);
             knownNorms.add(rNorm);
@@ -603,7 +684,7 @@ public class MsgRepo {
             if (full == null || !"ai".equals(full.optString("role", ""))) continue;
             String fullNorm = norms.get(i);
             if (fullNorm.isEmpty()) continue;
-            if (isMirrorOfKnown(roles, norms, i, fullNorm)) {
+            if (full.optBoolean("remote", false) && isMirrorOfKnown(roles, norms, i, fullNorm)) {
                 localArr.remove(i);
                 roles.remove(i);
                 norms.remove(i);
@@ -619,7 +700,8 @@ public class MsgRepo {
             String pNorm = norms.get(i - 1);
             String cNorm = norms.get(i);
             if (cNorm.length() < MIN_TAIL_MIRROR_LEN) continue;
-            if (pNorm.length() > cNorm.length() && pNorm.endsWith(cNorm)) {
+            if (cur.optBoolean("remote", false) && Math.abs(prev.optLong("time", 0) - cur.optLong("time", 0)) <= 10000
+                    && pNorm.length() > cNorm.length() && pNorm.endsWith(cNorm)) {
                 localArr.remove(i);
                 roles.remove(i);
                 norms.remove(i);
@@ -636,7 +718,9 @@ public class MsgRepo {
             for (int j = localArr.length() - 1; j > i; j--) {
                 JSONObject b = localArr.optJSONObject(j);
                 if (b == null || !aRole.equals(b.optString("role", ""))) continue;
-                if (aNorm.equals(normalizeMirrorText(b.optString("content", "")))) {
+                if ((a.optBoolean("remote", false) || b.optBoolean("remote", false))
+                        && Math.abs(a.optLong("time", 0) - b.optLong("time", 0)) <= 10000
+                        && aNorm.equals(normalizeMirrorText(b.optString("content", "")))) {
                     localArr.remove(j);
                     changed = true;
                 }

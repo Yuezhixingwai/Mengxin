@@ -1,6 +1,7 @@
 package com.zhiyin.ui.chat
 
 import android.content.Intent
+import androidx.lifecycle.repeatOnLifecycle
 import android.graphics.Bitmap
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -232,12 +233,20 @@ fun ChatDetailScreen(
     onOpenMe: () -> Unit = {},
     onOpenStickerShop: () -> Unit = {},
     onOpenCall: () -> Unit = {},
+    onOpenPhoneAgent: () -> Unit = {},
 ) {
     val vm: ChatViewModel = viewModel(
         key = "chat_$personaName",
         factory = ChatViewModel.factory(personaName, personaDesc, personaId),
     )
     val context = LocalContext.current
+    val phoneModePrefs = remember { context.getSharedPreferences("zhiyin_phone_agent", 0) }
+    var phoneMode by remember(personaId) {
+        mutableStateOf(phoneModePrefs.getBoolean("persona_$personaId", false))
+    }
+    var aiAppLock by remember(personaName) {
+        mutableStateOf(phoneModePrefs.getBoolean("ai_lock_$personaName", false))
+    }
 
     var localToast by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(localToast) {
@@ -333,6 +342,15 @@ fun ChatDetailScreen(
         lastMsgKey = key
     }
     LaunchedEffect(Unit) { vm.enter() }
+    val syncLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(vm, syncLifecycle) {
+        syncLifecycle.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            while (true) {
+                vm.syncRemoteMessages()
+                kotlinx.coroutines.delay(3000)
+            }
+        }
+    }
 
     var startDragX by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
     val hazeState = remember { HazeState() }
@@ -366,6 +384,7 @@ fun ChatDetailScreen(
             }
             .background(MiuixTheme.colorScheme.surface),
     ) {
+        Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
         if (manualBgActive) {
             bgBmp?.let {
                 Image(
@@ -391,8 +410,7 @@ fun ChatDetailScreen(
             RubberBandBox(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
-                    .then(if (!hasBg) Modifier.hazeSource(hazeState) else Modifier),
+                    .fillMaxWidth(),
             ) {
                 val pendingPhoto by PhotoPendingBus.state.collectAsState()
                 LazyColumn(
@@ -407,6 +425,17 @@ fun ChatDetailScreen(
                 ) {
             items(vm.messages, key = { it.index }) { msg ->
                 val bubble = remember(msg.index, msg.content) { parseBubble(msg.content) }
+                // Cross-channel history stores an entire reply in one record.
+                // Split its display without rewriting history or breaking sync deduplication.
+                val displayBubbles = remember(msg.role, bubble) {
+                    if (bubble is Bubble.Text && !bubble.error) {
+                        bubble.text.split(Regex("(?<=[。！？!?])\\s*|\\r?\\n+"))
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .map { Bubble.Text(it) }
+                            .ifEmpty { listOf(bubble) }
+                    } else listOf(bubble)
+                }
                 val prev = vm.messages.getOrNull(msg.index - 1)
                 val showTime = prev == null || (msg.time - prev.time) > 5 * 60 * 1000L
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
@@ -418,20 +447,22 @@ fun ChatDetailScreen(
                             modifier = Modifier.padding(vertical = 8.dp),
                         )
                     }
-                    MessageRow(
-                        msg = msg,
-                        bubble = bubble,
-                        personaName = personaName,
-                        personaId = personaId,
-                        animateIn = msg.index >= initialCount,
-                        onLongPress = { actionMsgIndex = msg.index },
-                        onPat = { vm.pat() },
-                        onOpenFriendSettings = { onOpenFriendSettings(personaId) },
-                        onOpenMe = onOpenMe,
-                        onOpenMoney = { m, t -> moneyDetail = m to t },
-                        onPreviewImage = { previewTarget = it },
-                        onOpenCall = onOpenCall,
-                    )
+                    displayBubbles.forEach { displayBubble ->
+                        MessageRow(
+                            msg = msg,
+                            bubble = displayBubble,
+                            personaName = personaName,
+                            personaId = personaId,
+                            animateIn = msg.index >= initialCount,
+                            onLongPress = { actionMsgIndex = msg.index },
+                            onPat = { vm.pat() },
+                            onOpenFriendSettings = { onOpenFriendSettings(personaId) },
+                            onOpenMe = onOpenMe,
+                            onOpenMoney = { m, t -> moneyDetail = m to t },
+                            onPreviewImage = { previewTarget = it },
+                            onOpenCall = onOpenCall,
+                        )
+                    }
                 }
             }
             val pp = pendingPhoto
@@ -453,10 +484,14 @@ fun ChatDetailScreen(
         }
         }
 
+        }
         ChatInputBar(
             personaName = personaName,
             personaId = personaId,
-            onSend = { text -> vm.send(text) },
+            onSend = { text ->
+                if (phoneMode && isExplicitPhoneTask(text)) vm.sendPhoneTask(text.removePrefix("操作：").removePrefix("操作:"))
+                else vm.send(text)
+            },
             onSendSticker = { marker -> vm.sendSticker(marker) },
             onSendImage = { path -> vm.sendImage(path) },
             onSendFile = { name, path -> vm.sendFile(name, path) },
@@ -470,18 +505,16 @@ fun ChatDetailScreen(
             transparentBackground = true,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .then(if (!hasBg) {
+                .then(
                     Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeDefaults.style(
-                            backgroundColor = MiuixTheme.colorScheme.surface.copy(alpha = 0.88f),
-                            blurRadius = 18.dp,
+                            backgroundColor = MiuixTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            blurRadius = 24.dp,
                             noiseFactor = 0.06f,
                         ),
                     )
-                } else {
-                    Modifier
-                })
+                )
                 .onSizeChanged { inputBarHeight = with(density) { it.height.toDp() } }
                 .navigationBarsPadding()
                 .imePadding(),
@@ -613,6 +646,19 @@ fun ChatDetailScreen(
                     onOpenSearchSettings()
                 },
                 onLocalToast = { localToast = it },
+                phoneMode = phoneMode,
+                aiAppLock = aiAppLock,
+                onToggleAiAppLock = { enabled ->
+                    aiAppLock = enabled
+                    phoneModePrefs.edit().putBoolean("ai_lock_$personaName", enabled).apply()
+                    localToast = if (enabled) "已允许该人设锁定你指定的应用" else "已关闭该人设的应用锁权限"
+                },
+                onTogglePhoneMode = { enabled ->
+                    phoneMode = enabled
+                    phoneModePrefs.edit().putBoolean("persona_$personaId", enabled).apply()
+                    localToast = if (enabled) "聊天照常；明确提出手机操作时才会执行" else "已关闭手机操作权限"
+                },
+                onOpenPhoneAgent = onOpenPhoneAgent,
             )
         }
     }
@@ -1577,6 +1623,11 @@ private fun ChatSettingsSheetContent(
     onOpenFriendSettings: () -> Unit,
     onOpenSearchSettings: () -> Unit,
     onLocalToast: (String) -> Unit,
+    phoneMode: Boolean,
+    aiAppLock: Boolean,
+    onToggleAiAppLock: (Boolean) -> Unit,
+    onTogglePhoneMode: (Boolean) -> Unit,
+    onOpenPhoneAgent: () -> Unit,
 ) {
     val context = LocalContext.current
     var thinking by remember {
@@ -1648,6 +1699,15 @@ private fun ChatSettingsSheetContent(
             voiceReply = it
             com.zhiyin.data.SettingsRepo.setVoiceReply(context, it)
             onLocalToast(if (it) "语音回复已开启" else "语音回复已关闭")
+        }
+        SheetSwitchRow("允许人设操作手机", phoneMode) { onTogglePhoneMode(it) }
+        SheetSwitchRow("允许该人设使用应用锁", aiAppLock) { onToggleAiAppLock(it) }
+        com.zhiyin.ui.SheetActionRow(
+            icon = Icons.Rounded.Settings,
+            label = "手机助手授权与应用锁",
+        ) {
+            onDismiss()
+            onOpenPhoneAgent()
         }
         SheetSwitchRow("联网搜索", searchEnabled && hasSearchKey) {
             if (!hasSearchKey) {
@@ -1810,3 +1870,16 @@ private data class PayGuardAction(
     val note: String,
     val isRedpacket: Boolean,
 )
+
+/** Phone access augments companionship; ordinary conversation must never be hijacked as a task. */
+private fun isExplicitPhoneTask(raw: String): Boolean {
+    val text = raw.trim()
+    if (text.startsWith("操作：") || text.startsWith("操作:")) return true
+    // App locking is handled by the persona's opt-in chat ability, not the screen agent.
+    if (Regex("锁(住|上|定)?(应用|软件|微信|QQ|抖音|小红书)").containsMatchIn(text)) return false
+    val action = "打开|启动|进入|搜索|查找|点击|点开|滑动|切换|关闭|下单|购买|买|订|发送|安装|卸载|设置|操控|操作"
+    return Regex("^(?:帮我|替我|请你|请帮我|麻烦你|你能不能帮我|能不能帮我|可以帮我|帮忙).{0,8}(?:$action)")
+        .containsMatchIn(text) ||
+        Regex("^(?:给我(?:买|订|打开|找|查)|打开|启动|进入|搜索|点开|操作手机)")
+            .containsMatchIn(text)
+}

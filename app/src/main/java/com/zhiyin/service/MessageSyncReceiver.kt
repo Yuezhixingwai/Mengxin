@@ -54,6 +54,7 @@ class MessageSyncReceiver : BroadcastReceiver() {
     private fun pollSilently(context: Context) {
         val token = ApiGateway.getToken(context) ?: return
         if (token.isEmpty()) return
+        pollLockCommand(context, token)
         try {
             val resp = ApiGateway.getSync(ApiGateway.ZHIYIN_BASE + "/api/chat/active-messages", token)
             val messages = JSONObject(resp).optJSONArray("messages") ?: return
@@ -95,6 +96,25 @@ class MessageSyncReceiver : BroadcastReceiver() {
         }
     }
 
+    private fun pollLockCommand(context: Context, token: String) {
+        if (!com.zhiyin.yandere.YandereManager.isEnabled(context) ||
+            !com.zhiyin.yandere.YandereManager.isDeviceAdminActive(context)) return
+        try {
+            val response = ApiGateway.getSync(ApiGateway.ZHIYIN_BASE + "/api/yandere/command", token)
+            val command = JSONObject(response)
+            val timestamp = command.optLong("timestamp", 0L)
+            val prefs = context.getSharedPreferences("zhiyin_sync", Context.MODE_PRIVATE)
+            if (command.optString("action") != "lock" || timestamp <= prefs.getLong("last_lock_command", 0L)) return
+            // Never replay a stale remote lock command after a long offline period.
+            if (System.currentTimeMillis() - timestamp !in 0..(2 * 60 * 1000L)) return
+            prefs.edit().putLong("last_lock_command", timestamp).apply()
+            if (com.zhiyin.yandere.YandereManager.lockScreen(context)) {
+                ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/yandere/clear", "{}", token)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
     private fun parseMsgTime(msg: JSONObject): Long {
         val t = msg.optLong("time", 0L)
         if (t > 0) return t
@@ -109,5 +129,16 @@ class MessageSyncReceiver : BroadcastReceiver() {
             }
         }
         return System.currentTimeMillis()
+    }
+}
+
+class MessageSyncBootReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        val notificationsEnabled = context.getSharedPreferences("zhiyin", Context.MODE_PRIVATE)
+            .getBoolean("notify_enabled", true)
+        if (notificationsEnabled && !ApiGateway.getToken(context).isNullOrEmpty()) {
+            MessageSyncScheduler.start(context)
+        }
     }
 }

@@ -57,8 +57,10 @@ object CallWsEngine {
 
     val state = MutableStateFlow(UiState())
 
-    private const val API_HOST = "api.zhiyin.yuezhixingwai.cn"
-    private const val WS_HOST = "wss://" + API_HOST + "/ws/call"
+    private val wsHost: String
+        get() = com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE.trimEnd('/')
+            .replaceFirst("https://", "wss://")
+            .replaceFirst("http://", "ws://") + "/ws/call"
     private const val MIC_RATE = 16000
     private const val OUT_RATE = 24000
     // 起播水位：先攒够 180ms 音频再开播，抹平首包到达不均匀造成的 underrun
@@ -246,7 +248,7 @@ object CallWsEngine {
             .pingInterval(20, TimeUnit.SECONDS)
             .build()
         okHttp = client
-        val url = WS_HOST + "?token=" + token
+        val url = wsHost + "?token=" + token
         val done = java.util.concurrent.CountDownLatch(1)
         var ready = false
 

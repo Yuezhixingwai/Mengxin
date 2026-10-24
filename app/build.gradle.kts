@@ -23,6 +23,12 @@ android {
         versionName = "2.3.57"
         val buildBatch = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
         buildConfigField("String", "BUILD_BATCH", "\"$buildBatch\"")
+        val localApi = providers.gradleProperty("localApiMode").orElse("false").get().toBoolean()
+        val apiUrl = if (localApi) providers.gradleProperty("localApiBaseUrl").get()
+            else "https://api.zhiyin.yuezhixingwai.cn"
+        buildConfigField("boolean", "LOCAL_API", localApi.toString())
+        buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
+        buildConfigField("String", "LOCAL_MEMORY_URL", "\"${if (localApi) providers.gradleProperty("localMemoryBaseUrl").get() else ""}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

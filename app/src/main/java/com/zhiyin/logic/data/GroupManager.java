@@ -46,7 +46,7 @@ public class GroupManager {
             Matcher mat = p.matcher(m[1]);
             while (mat.find()) {
                 String name = mat.group(1).trim();
-                if (!name.equals("系统") && !name.isEmpty()
+                if (!name.equals("系统") && !name.equals("群成员") && !name.isEmpty()
                         && !name.startsWith("STICKER:")
                         && !name.startsWith("CUSTOM_STICKER:")
                         && !name.equals("错误") && !name.equals("pat")

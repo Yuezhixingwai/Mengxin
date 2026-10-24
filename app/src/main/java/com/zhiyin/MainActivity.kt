@@ -28,6 +28,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zhiyin.data.AccountApi
@@ -93,6 +95,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(PrivacyManager.secureFlagOn) { applySecureFlag() }
 
             LingXinTheme(darkTheme = darkTheme, themeId = themeId) {
+                Box(Modifier.fillMaxSize()) {
                 top.yukonga.miuix.kmp.basic.Scaffold(
                     containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentWindowInsets = WindowInsets(0.dp),
@@ -203,6 +206,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     }
+                }
                 }
             }
         }

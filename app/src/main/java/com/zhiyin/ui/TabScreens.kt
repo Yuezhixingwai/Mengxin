@@ -65,6 +65,7 @@ import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PersonAddAlt
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.PhotoLibrary
@@ -960,6 +961,7 @@ fun SettingsScreen(
     onOpenPreferences: () -> Unit = {},
     onOpenStickerShop: () -> Unit = {},
     onOpenGlobalBackground: () -> Unit = {},
+    onOpenPhoneAgent: () -> Unit = {},
 ) {
     val darkTheme by appVm.darkMode.collectAsState()
     val notifyEnabled by appVm.notifyEnabled.collectAsState()
@@ -1109,6 +1111,10 @@ fun SettingsScreen(
                             }
                         )
                     }
+                }
+
+                CardContainer {
+                    MenuRow(Icons.Rounded.PhoneAndroid, "手机助手", onClick = onOpenPhoneAgent)
                 }
 
                 CardContainer {
