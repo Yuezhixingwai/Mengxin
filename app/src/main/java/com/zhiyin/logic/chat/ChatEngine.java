@@ -203,6 +203,12 @@ public class ChatEngine {
                 // 人设自动发照片：服务端异步生图（万相约10s），这里后台短轮询领取，
                 // 领到就补一条 [image]<url> 的 AI 消息；文字回复照常先显示，不阻塞。
                 if (json.optBoolean("photo_pending", false)) {
+                    // 先立一个"在拍了…"的占位气泡（带人设化文案和预估秒数），图到了再换成图片
+                    com.zhiyin.logic.chat.PhotoPendingBus.INSTANCE.start(
+                            p.name,
+                            json.optString("photo_hint", ""),
+                            json.optInt("photo_eta", 50));
+                    notifyChanged();
                     pollPendingPhoto(ctx, sid, p.name);
                 }
 
@@ -1358,6 +1364,7 @@ public class ChatEngine {
                     String st = j.optString("status", "");
                     if ("ready".equals(st)) {
                         String img = j.optString("url", "");
+                        com.zhiyin.logic.chat.PhotoPendingBus.INSTANCE.clear(personaName);
                         if (!img.isEmpty()) {
                             MsgRepo.add(ctx, sid, "ai", "[image]" + img);
                             notifyChanged();
@@ -1365,11 +1372,19 @@ public class ChatEngine {
                         }
                         return;
                     }
-                    if ("failed".equals(st)) return;
-                    if ("none".equals(st) && i > 1) return;
+                    if ("failed".equals(st)) {
+                        com.zhiyin.logic.chat.PhotoPendingBus.INSTANCE.clear(personaName);
+                        return;
+                    }
+                    if ("none".equals(st) && i > 1) {
+                        com.zhiyin.logic.chat.PhotoPendingBus.INSTANCE.clear(personaName);
+                        return;
+                    }
                 }
             } catch (Exception e) {
                 Log.d("Photo", "领取照片失败: " + e.getMessage());
+            } finally {
+                com.zhiyin.logic.chat.PhotoPendingBus.INSTANCE.clear(personaName);
             }
         }).start();
     }

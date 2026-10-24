@@ -88,6 +88,7 @@ import com.zhiyin.data.AppSession
 import com.zhiyin.data.PlazaApi
 import com.zhiyin.data.VoicePlayer
 import com.zhiyin.logic.chat.ChatEngine
+import com.zhiyin.logic.chat.PhotoPendingBus
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.data.PersonaManager
 import com.zhiyin.logic.net.ApiGateway
@@ -393,6 +394,7 @@ fun ChatDetailScreen(
                     .fillMaxWidth()
                     .then(if (!hasBg) Modifier.hazeSource(hazeState) else Modifier),
             ) {
+                val pendingPhoto by PhotoPendingBus.state.collectAsState()
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -431,6 +433,10 @@ fun ChatDetailScreen(
                         onOpenCall = onOpenCall,
                     )
                 }
+            }
+            val pp = pendingPhoto
+            if (pp != null && pp.persona == personaName) {
+                item(key = "photo_pending_bubble") { PhotoPendingBubble(pp) }
             }
             item {
                 Text(
@@ -1000,6 +1006,45 @@ private fun StickerBubble(
                     bubble.extra,
                     color = if (mine) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 生图占位气泡：模仿豆包那种"正在生成"的灰块，文案带人设口吻，下面显示预估剩余秒数。
+ * 图 ready 后由 ChatEngine 清掉 PhotoPendingBus，这里自然消失，换成真正的图片消息。
+ */
+@Composable
+private fun PhotoPendingBubble(st: PhotoPendingBus.State) {
+    val now by produceState(System.currentTimeMillis(), st.startedAt) {
+        while (true) {
+            value = System.currentTimeMillis()
+            try { kotlinx.coroutines.delay(500) } catch (_: Exception) { break }
+        }
+    }
+    val left = ((st.etaSec * 1000L - (now - st.startedAt)) / 1000L).coerceAtLeast(0L)
+    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.CenterStart) {
+        Box(
+            modifier = Modifier
+                .size(width = 200.dp, height = 132.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MiuixTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = st.hint,
+                    fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainer,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = if (left > 0) "预计 ${left} 秒" else "马上就好",
+                    fontSize = 11.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
         }
