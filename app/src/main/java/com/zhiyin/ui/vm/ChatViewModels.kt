@@ -14,6 +14,7 @@ import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.data.GroupManager
 import com.zhiyin.logic.data.MsgRepo
 import com.zhiyin.logic.data.PersonaManager
+import com.zhiyin.service.MessageSyncReceiver
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -150,7 +151,7 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
                         val content = m.optString("content", "")
                         if (!sid.startsWith("persona_") || content.isBlank()) continue
                         batches.getOrPut(sid) { mutableListOf() }.add(
-                            MsgRepo.RemoteMsg(role, content, m.optLong("time", 0)))
+                            MsgRepo.RemoteMsg(role, content, MsgRepo.normalizeEpoch(m.optLong("time", 0))))
                     }
                     for ((sid, batch) in batches) {
                         if (MsgRepo.addRemoteBatchIfAbsent(ctx, sid, batch)) changed = true
@@ -160,7 +161,7 @@ class ChatListViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Li
                 // The local chat remains usable when the memory service is offline.
             } finally {
                 externalSyncPending.set(false)
-                if (changed) android.os.Handler(android.os.Looper.getMainLooper()).post { refresh() }
+                if (changed) ChatEngine.notifyMessagesChanged()
             }
         }.start()
     }
@@ -211,6 +212,12 @@ class ChatViewModel(
         MsgRepo.setActiveSession(sessionId)
         MsgRepo.markAllRead(getApplication(), sessionId)
         reload()
+        Thread {
+            try {
+                MessageSyncReceiver().poll(getApplication())
+            } catch (_: Exception) {
+            }
+        }.start()
         ChatEngine.loadServerHistory(getApplication(), persona) {
             MsgRepo.syncFromMemoryService(getApplication(), sessionId) { changed ->
                 if (changed) reload()

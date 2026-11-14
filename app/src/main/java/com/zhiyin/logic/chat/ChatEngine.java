@@ -61,6 +61,7 @@ public class ChatEngine {
     public static void setActiveListener(Listener l) { sActive = l; }
 
     public static void notice(String msg) { notifyNotice(msg); }
+    public static void notifyMessagesChanged() { notifyChanged(); }
     public static boolean isSending() { return sSending; }
 
     private static void notifyChanged() {
@@ -109,6 +110,101 @@ public class ChatEngine {
 
     private static String uploadUrl(Context ctx, String personaName) {
         return "/api/upload?persona=" + personaName + (officialQuota(ctx) ? "&use_official=1" : "");
+    }
+
+    public interface ReplyCallback {
+        void onReply(String text);
+        void onError(String error);
+    }
+
+    /** 用和私聊相同的请求生成一句回复，并写入该人设的聊天记录。 */
+    public static void requestReply(Context ctx, Persona p, String text, ReplyCallback cb) {
+        if (p == null || p.name == null || p.name.isEmpty() || text == null || text.trim().isEmpty()) {
+            if (cb != null) MAIN.post(() -> cb.onError("内容为空"));
+            return;
+        }
+        final String sid = "persona_" + p.name;
+        final long sentAt = MsgRepo.addWithTime(ctx, sid, "user", text);
+        notifyChanged();
+        final String fToken = token(ctx);
+        final String[] km = resolveModel(ctx);
+        new Thread(() -> {
+            try {
+                JSONArray messages = new JSONArray();
+                String sysContent = buildSystemPrompt(ctx, p);
+                if (!sysContent.isEmpty()) {
+                    JSONObject sys = new JSONObject();
+                    sys.put("role", "system");
+                    sys.put("content", sysContent);
+                    messages.put(sys);
+                }
+                String searchContext = searchForContext(ctx, text, fToken);
+                if (!searchContext.isEmpty()) {
+                    JSONObject searchMsg = new JSONObject();
+                    searchMsg.put("role", "system");
+                    searchMsg.put("content", searchContext);
+                    messages.put(searchMsg);
+                }
+                List<String[]> history = MsgRepo.getAll(ctx, sid);
+                int hStart = Math.max(0, history.size() - 30);
+                for (int hi = hStart; hi < history.size(); hi++) {
+                    String[] msg = history.get(hi);
+                    if (sentAt > 0 && Long.parseLong(msg[2]) > sentAt) continue;
+                    String clean = cleanHistoryContent(ctx, msg[1]);
+                    if (clean == null) continue;
+                    JSONObject m = new JSONObject();
+                    m.put("role", msg[0].equals("ai") ? "assistant" : msg[0]);
+                    m.put("content", clean);
+                    messages.put(m);
+                }
+                JSONObject body = new JSONObject();
+                if (!km[0].isEmpty()) body.put("api_key_id", Integer.parseInt(km[0]));
+                body.put("model", km[1]);
+                body.put("messages", messages);
+                body.put("thinking", prefs(ctx).getBoolean("thinking_mode_enabled", false));
+                body.put("sticker_enabled", prefs(ctx).getBoolean("sticker_enabled", true));
+                if (officialQuota(ctx)) body.put("use_official", 1);
+                body.put("persona_name", p.name);
+                body.put("self_upload", 1);
+                body.put("raw_user_content", text);
+                body.put("photo_support", 1);
+                if (com.zhiyin.yandere.YandereManager.INSTANCE.isEnabled(ctx)) {
+                    body.put("yandere_mode", true);
+                    body.put("yandere_context", com.zhiyin.yandere.YandereManager.INSTANCE.buildYandereContext(ctx));
+                }
+                String resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/chat", body.toString(), fToken);
+                JSONObject json = new JSONObject(resp);
+                if (json.has("error")) {
+                    String err = json.optString("error", "回复失败");
+                    MsgRepo.add(ctx, sid, "ai", "[Error] " + err);
+                    notifyChanged();
+                    if (cb != null) MAIN.post(() -> cb.onError(err));
+                    return;
+                }
+                String content = "";
+                if (json.has("choices"))
+                    content = json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "");
+                content = content.replaceAll("\\[APP_LOCK:[^\\]\\r\\n]*\\]", "")
+                        .replace("[LOCK]", "")
+                        .replaceAll("\\[pat\\][^\\n]*", "")
+                        .replaceAll("\\[PHOTO\\s*[:：][^\\]】]*[\\]】]", "")
+                        .trim();
+                if (json.optBoolean("photo_pending", false)) {
+                    com.zhiyin.logic.chat.PhotoPendingBus.INSTANCE.start(
+                            p.name, json.optString("photo_hint", ""), json.optInt("photo_eta", 50));
+                    notifyChanged();
+                    pollPendingPhoto(ctx, sid, p.name);
+                }
+                if (!content.isEmpty()) {
+                    MsgRepo.add(ctx, sid, "ai", content);
+                    notifyChanged();
+                }
+                final String shown = content;
+                if (cb != null) MAIN.post(() -> cb.onReply(shown));
+            } catch (Exception e) {
+                if (cb != null) MAIN.post(() -> cb.onError(e.getMessage() == null ? "回复失败" : e.getMessage()));
+            }
+        }).start();
     }
 
     public static void sendText(Context ctx, Persona p, String text) {
@@ -1455,10 +1551,6 @@ public class ChatEngine {
 
     public static void loadServerHistory(Context ctx, Persona p, Runnable onDone) {
         String sid = "persona_" + p.name;
-        if (!MsgRepo.getAll(ctx, sid).isEmpty()) {
-            if (onDone != null) onDone.run();
-            return;
-        }
         new Thread(() -> {
             try {
                 String t = token(ctx);
@@ -1467,24 +1559,38 @@ public class ChatEngine {
                 JSONObject json = new JSONObject(resp);
                 JSONArray history = json.optJSONArray("history");
                 if (history != null && history.length() > 0) {
-                    java.util.Set<String> seen = new java.util.HashSet<>();
+                    java.util.List<MsgRepo.RemoteMsg> batch = new java.util.ArrayList<>();
                     for (int i = 0; i < history.length(); i++) {
                         JSONObject msg = history.getJSONObject(i);
                         String role = msg.optString("role", "user");
                         String content = msg.optString("content", "");
                         String appRole = "assistant".equals(role) ? "ai" : "user";
-                        String trimmed = content.trim();
-                        if (trimmed.isEmpty()) continue;
-                        String key = appRole + "|" + trimmed;
-                        if (seen.contains(key)) continue;
-                        seen.add(key);
-                        MsgRepo.addRemoteIfAbsent(ctx, sid, appRole, content, 0);
+                        if (content.trim().isEmpty()) continue;
+                        batch.add(new MsgRepo.RemoteMsg(appRole, content, messageTime(msg)));
                     }
-                    notifyChanged();
+                    if (MsgRepo.addRemoteBatchIfAbsent(ctx, sid, batch)) notifyChanged();
                 }
             } catch (Exception ignored) {}
             if (onDone != null) onDone.run();
         }).start();
+    }
+
+    private static long messageTime(JSONObject msg) {
+        long t = MsgRepo.normalizeEpoch(msg.optLong("time", 0));
+        if (t <= 0) t = MsgRepo.normalizeEpoch(msg.optLong("timestamp", 0));
+        if (t > 0) return t;
+        String s = msg.optString("created_at", "");
+        if (s.isEmpty()) return 0;
+        String[] patterns = new String[]{"yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss"};
+        for (String pattern : patterns) {
+            try {
+                java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat(pattern, java.util.Locale.US);
+                fmt.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Shanghai"));
+                java.util.Date d = fmt.parse(s);
+                if (d != null) return d.getTime();
+            } catch (Exception ignored) {}
+        }
+        return 0;
     }
 
     /**

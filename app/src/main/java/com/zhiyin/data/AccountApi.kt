@@ -138,6 +138,35 @@ object AccountApi {
         val phoneMasked: String,
     )
 
+    val activeGapChoices = intArrayOf(10, 20, 30, 45, 60, 120, 180)
+
+    fun activeGapLabel(min: Int): String = when {
+        min >= 60 && min % 60 == 0 -> "${min / 60}小时"
+        else -> "${min}分钟"
+    }
+
+    suspend fun getActiveGap(): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val ctx = com.zhiyin.logic.AppHolder.app()!!
+            val resp = ApiGateway.get("/api/user/active-gap", ctx)
+            val gap = JSONObject(resp).optInt("gapMin", 20)
+            Result.success(gap)
+        } catch (e: Exception) {
+            Result.failure(Exception(extractError(e)))
+        }
+    }
+
+    suspend fun saveActiveGap(gapMin: Int): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val ctx = com.zhiyin.logic.AppHolder.app()!!
+            val body = JSONObject().put("gapMin", gapMin).toString()
+            val resp = ApiGateway.put("/api/user/active-gap", body, ctx)
+            Result.success(JSONObject(resp).optInt("gapMin", gapMin))
+        } catch (e: Exception) {
+            Result.failure(Exception(extractError(e)))
+        }
+    }
+
     suspend fun getUserInfo(): Result<UserInfo> = withContext(Dispatchers.IO) {
         try {
             val ctx = com.zhiyin.logic.AppHolder.app()!!

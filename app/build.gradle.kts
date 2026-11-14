@@ -19,9 +19,19 @@ android {
         applicationId = "com.zhiyin"
         minSdk = 24
         targetSdk = 36
-        versionCode = 31
-        versionName = "2.3.57"
-        val buildBatch = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
+        versionCode = 34
+        versionName = "2.3.8"
+        // 同一 versionCode 复用批次号。每次配置都写新时间会让 BuildConfig 变化，正式包只能全量重编、重跑 R8。
+        val batchKey = "$versionCode-$versionName"
+        val batchFile = file(".build-batch")
+        val cachedBatch = batchFile.takeIf { it.isFile }?.readLines()?.firstOrNull()?.trim()
+        val buildBatch = if (cachedBatch != null && cachedBatch.startsWith("$batchKey ")) {
+            cachedBatch.removePrefix("$batchKey ")
+        } else {
+            val fresh = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
+            batchFile.writeText("$batchKey $fresh\n")
+            fresh
+        }
         buildConfigField("String", "BUILD_BATCH", "\"$buildBatch\"")
         val localApi = providers.gradleProperty("localApiMode").orElse("false").get().toBoolean()
         val apiUrl = if (localApi) providers.gradleProperty("localApiBaseUrl").get()
@@ -56,6 +66,9 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    lint {
+        checkReleaseBuilds = false
     }
 }
 

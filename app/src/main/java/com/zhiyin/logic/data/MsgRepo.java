@@ -274,10 +274,11 @@ public class MsgRepo {
                                        String sid, RemoteMsg m) {
         try {
             if (isPendingSplitReply(sid, m.role, m.content)) return false;
+            m = new RemoteMsg(m.role, m.content, normalizeEpoch(m.time));
             if (m.time > 0) {
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject o = arr.optJSONObject(i);
-                    if (o == null || o.optLong("time", 0) != m.time) continue;
+                    if (o == null || normalizeEpoch(o.optLong("time", 0)) != m.time) continue;
                     if (m.content.equals(o.optString("content", ""))) return false;
                     String oNorm = normalizeMirrorText(o.optString("content", ""));
                     String mNorm = normalizeMirrorText(m.content);
@@ -288,8 +289,13 @@ public class MsgRepo {
             if (!norm.isEmpty()) {
                 for (int i = 0; i < roles.size(); i++) {
                     JSONObject known = arr.optJSONObject(i);
-                    if (known != null && Math.abs(known.optLong("time", 0) - m.time) <= 10000
+                    if (known != null && Math.abs(normalizeEpoch(known.optLong("time", 0)) - m.time) <= 10000
                             && m.role.equals(roles.get(i)) && norm.equals(norms.get(i))) return false;
+                }
+                if (m.time <= 0) {
+                    for (int i = 0; i < roles.size(); i++) {
+                        if (m.role.equals(roles.get(i)) && norm.equals(norms.get(i))) return false;
+                    }
                 }
                 if ("ai".equals(m.role) && isMirrorOfKnown(roles, norms, -1, norm)) return false;
             } else {
@@ -299,7 +305,7 @@ public class MsgRepo {
                             && m.content.equals(o.optString("content", ""))) return false;
                 }
             }
-            if (isBlockedRemoteAi(arr, m.role, norm)) return false;
+            if (isBlockedRemoteAi(arr, m.role, norm, m.time)) return false;
             JSONObject o = new JSONObject();
             o.put("role", m.role);
             o.put("content", m.content);
@@ -316,11 +322,22 @@ public class MsgRepo {
         }
     }
 
-    private static boolean isBlockedRemoteAi(JSONArray arr, String role, String norm) {
+    /** 服务端有的用秒，有的用毫秒。秒当毫秒会排到 1970 年，主动消息看起来像没收到。 */
+    public static long normalizeEpoch(long t) {
+        if (t > 1_000_000_000L && t < 100_000_000_000L) return t * 1000L;
+        return t;
+    }
+
+    private static boolean isBlockedRemoteAi(JSONArray arr, String role, String norm, long time) {
         if (!"ai".equals(role)) return false;
-        if (countTailAiRun(arr) >= MAX_REMOTE_AI_RUN) return true;
-        if (norm == null || norm.length() < MIN_TAIL_MIRROR_LEN) return false;
         JSONObject last = arr.length() > 0 ? arr.optJSONObject(arr.length() - 1) : null;
+        long lastTime = last == null ? 0L : normalizeEpoch(last.optLong("time", 0));
+        long incoming = normalizeEpoch(time);
+        // 比上一条晚一截的是角色后来主动发的，不能因为前面已经连着好几条 AI 气泡就丢掉。
+        boolean sameBurst = incoming <= 0 || lastTime <= 0 || incoming - lastTime <= 20000L;
+        if (sameBurst && countTailAiRun(arr) >= MAX_REMOTE_AI_RUN) return true;
+        if (!sameBurst) return false;
+        if (norm == null || norm.length() < MIN_TAIL_MIRROR_LEN) return false;
         if (last == null || !"ai".equals(last.optString("role", ""))) return false;
         String lastNorm = normalizeMirrorText(last.optString("content", ""));
         return lastNorm.length() > norm.length() && lastNorm.endsWith(norm);
@@ -407,6 +424,7 @@ public class MsgRepo {
                     com.zhiyin.logic.net.ApiGateway.memoryRequestSync(
                         memUrl + "/api/chat/" + java.net.URLEncoder.encode(sessionId, "UTF-8"),
                         "POST", body.toString(), userId);
+                    markUploaded(fCtx, sessionId, fTime);
                 } catch (Exception e) {
                     android.util.Log.w("MsgRepo", "sync to 9005 failed: " + e.getMessage());
                 }
@@ -419,14 +437,57 @@ public class MsgRepo {
     private static final java.util.concurrent.ConcurrentHashMap<String, String> sUploadedHistory = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** Retry local-only history after an offline/failed upload; keep the original message times. */
+    /** @return false when this call just baselined existing history and nothing new should be uploaded. */
+    private static boolean baselineUploaded(Context ctx, String sid) {
+        android.content.SharedPreferences sp = ctx.getSharedPreferences("zhiyin_sync", Context.MODE_PRIVATE);
+        String key = "upload_baseline_" + sid;
+        if (sp.getBoolean(key, false)) return true;
+        try {
+            synchronized (sLock) {
+                JSONArray arr = loadArr(ctx, sid);
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject m = arr.optJSONObject(i);
+                    if (m != null && !m.optBoolean("remote", false)) m.put("uploaded", true);
+                }
+                storeArr(ctx, sid, arr);
+            }
+        } catch (Exception ignored) {
+            return true;
+        }
+        sp.edit().putBoolean(key, true).apply();
+        return false;
+    }
+
+    private static void markUploaded(Context ctx, String sid, long time) {
+        if (time <= 0) return;
+        try {
+            synchronized (sLock) {
+                JSONArray arr = loadArr(ctx, sid);
+                boolean changed = false;
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject m = arr.optJSONObject(i);
+                    if (m == null || m.optLong("time", 0) != time || m.optBoolean("uploaded", false)) continue;
+                    m.put("uploaded", true);
+                    changed = true;
+                }
+                if (changed) storeArr(ctx, sid, arr);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     private static void uploadLocalHistory(Context ctx, String sid, String memUrl, String userId) {
         try {
+            // 旧消息只标记一次，不再整段重传。重传会被记忆服务当成刚发生的对话，
+            // App 和微信的主动发消息计时就一直被重置。
+            if (!baselineUploaded(ctx, sid)) return;
             JSONArray messages = new JSONArray();
+            java.util.List<Long> times = new java.util.ArrayList<>();
             synchronized (sLock) {
                 JSONArray local = loadArr(ctx, sid);
                 for (int i = Math.max(0, local.length() - 100); i < local.length(); i++) {
                     JSONObject m = local.optJSONObject(i);
-                    if (m == null || m.optBoolean("remote", false)) continue;
+                    if (m == null || m.optBoolean("remote", false) || m.optBoolean("uploaded", false)) continue;
                     String role = m.optString("role", "");
                     String content = m.optString("content", "");
                     if ((!"user".equals(role) && !"ai".equals(role)) || content.trim().isEmpty()) continue;
@@ -436,6 +497,7 @@ public class MsgRepo {
                     if (time <= 0) continue;
                     messages.put(new JSONObject().put("role", "ai".equals(role) ? "assistant" : role)
                             .put("content", content).put("time", time).put("platform", "android_app"));
+                    times.add(time);
                 }
             }
             if (messages.length() == 0) return;
@@ -446,7 +508,10 @@ public class MsgRepo {
             if (fingerprint.equals(sUploadedHistory.get(key))) return;
             String response = ApiGateway.memoryRequestSync(memUrl + "/api/chat/" + java.net.URLEncoder.encode(sid, "UTF-8") + "/batch",
                     "POST", body, userId);
-            if (new JSONObject(response).has("message")) sUploadedHistory.put(key, fingerprint);
+            if (new JSONObject(response).has("message")) {
+                sUploadedHistory.put(key, fingerprint);
+                for (Long time : times) markUploaded(ctx, sid, time);
+            }
         } catch (Exception e) {
             android.util.Log.w("MsgRepo", "retry local history failed: " + e.getMessage());
         }
@@ -578,11 +643,11 @@ public class MsgRepo {
                                        String sessionId, RemoteMsg m) {
         try {
             if (isPendingSplitReply(sessionId, m.role, m.content)) return false;
-            long t = m.time;
+            long t = normalizeEpoch(m.time);
             if (t > 0) {
                 for (int i = 0; i < localArr.length(); i++) {
                     JSONObject o = localArr.optJSONObject(i);
-                    if (o == null || o.optLong("time", 0) != t) continue;
+                    if (o == null || normalizeEpoch(o.optLong("time", 0)) != t) continue;
                     if (m.content.equals(o.optString("content", ""))) return false;
                     String oNorm = normalizeMirrorText(o.optString("content", ""));
                     String mNorm = normalizeMirrorText(m.content);
@@ -594,12 +659,17 @@ public class MsgRepo {
             if (!rNorm.isEmpty()) {
                 for (int k = 0; k < knownNorms.size() && !dup; k++) {
                     JSONObject known = localArr.optJSONObject(k);
-                    if (known != null && Math.abs(known.optLong("time", 0) - t) <= 10000
+                    if (known != null && Math.abs(normalizeEpoch(known.optLong("time", 0)) - t) <= 10000
                             && m.role.equals(knownRoles.get(k)) && rNorm.equals(knownNorms.get(k))) dup = true;
+                }
+                if (!dup && t <= 0) {
+                    for (int k = 0; k < knownNorms.size() && !dup; k++) {
+                        if (m.role.equals(knownRoles.get(k)) && rNorm.equals(knownNorms.get(k))) dup = true;
+                    }
                 }
                 if (!dup && "ai".equals(m.role) && isMirrorOfKnown(knownRoles, knownNorms, -1, rNorm)) dup = true;
             }
-            if (!dup && isBlockedRemoteAi(localArr, m.role, rNorm)) dup = true;
+            if (!dup && isBlockedRemoteAi(localArr, m.role, rNorm, t)) dup = true;
             if (dup) return false;
             JSONObject o = new JSONObject();
             o.put("role", m.role);

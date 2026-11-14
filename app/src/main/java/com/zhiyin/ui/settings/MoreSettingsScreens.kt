@@ -1,4 +1,4 @@
-﻿package com.zhiyin.ui.settings
+package com.zhiyin.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -222,7 +222,7 @@ fun SearchSettingsScreen(appVm: AppViewModel, onBack: () -> Unit) {
                 }
 
                 CardContainer {
-                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Row {
                             Text("最大返回条数", fontSize = 16.sp, color = colors.onSurface, modifier = Modifier.weight(1f))
                             Text("$maxResults 条", fontSize = 16.sp, color = colors.primary)
@@ -238,7 +238,7 @@ fun SearchSettingsScreen(appVm: AppViewModel, onBack: () -> Unit) {
                 }
 
                 CardContainer {
-                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Row {
                             Text("搜索频率限制", fontSize = 16.sp, color = colors.onSurface, modifier = Modifier.weight(1f))
                             Text(
@@ -286,7 +286,7 @@ internal fun SettingSwitchRow(label: String, checked: Boolean, onChecked: (Boole
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, modifier = Modifier.weight(1f), fontSize = 16.sp, color = colors.onSurface)

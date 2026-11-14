@@ -219,7 +219,7 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
                             if (path.isEmpty()) "需先选择一张背景图片" else "开启后所有非聊天页面生效",
                             fontSize = 12.sp,
                             color = colors.onSurfaceVariantActions,
-                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                         )
                     }
                 }
@@ -231,11 +231,11 @@ fun GlobalBackgroundScreen(appVm: AppViewModel, onBack: () -> Unit) {
                             "在背景图上叠加模糊效果",
                             fontSize = 12.sp,
                             color = colors.onSurfaceVariantActions,
-                            modifier = Modifier.padding(horizontal = 20.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp),
                         )
                         if (acrylic) {
                             Spacer(Modifier.height(8.dp))
-                            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,

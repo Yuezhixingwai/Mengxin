@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,7 +33,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.rounded.Close
@@ -64,6 +65,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhiyin.data.AppSession
+import com.zhiyin.logic.chat.ChatEngine
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.net.ApiGateway
 import com.zhiyin.ui.BackButton
@@ -253,50 +255,56 @@ fun MomentsScreen(
         RubberBandBox(modifier = Modifier.fillMaxSize()) {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             item {
-                Box(
+                Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(230.dp)
-                        .clickable { coverPick.launch("image/*") },
+                        .statusBarsPadding()
+                        .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (coverPath.isNotEmpty() && File(coverPath).exists()) {
-                        val coverBmp by produceState<ImageBitmap?>(initialValue = null, coverPath) {
-                            value = withContext(Dispatchers.IO) { decodeSampledFile(coverPath, 1440)?.asImageBitmap() }
-                        }
-                        coverBmp?.let {
-                            Image(
-                                bitmap = it,
-                                contentDescription = "朋友圈背景",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                    } else {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(MiuixTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "点击设置朋友圈背景",
-                                color = MiuixTheme.colorScheme.onPrimaryContainer,
-                                fontSize = 14.sp,
-                            )
-                        }
-                    }
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .statusBarsPadding()
-                            .padding(horizontal = 4.dp),
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "返回",
-                            tint = Color.White,
+                    BackButton(onBack, Modifier.size(40.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "朋友圈",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        val who = AppSession.username().ifBlank { "我" }
+                        Text(
+                            "$who · ${posts.size} 条动态",
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
                         )
                     }
+                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            Icons.Rounded.MoreVert,
+                            contentDescription = "更多",
+                            tint = MiuixTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                if (coverPath.isNotEmpty() && File(coverPath).exists()) {
+                    val coverBmp by produceState<ImageBitmap?>(initialValue = null, coverPath) {
+                        value = withContext(Dispatchers.IO) { decodeSampledFile(coverPath, 1440)?.asImageBitmap() }
+                    }
+                    coverBmp?.let {
+                        Image(
+                            bitmap = it,
+                            contentDescription = "朋友圈背景",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 8.dp)
+                                .fillMaxWidth()
+                                .height(140.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { coverPick.launch("image/*") },
+                        )
+                    }
+                }
                 }
             }
 
@@ -319,7 +327,7 @@ fun MomentsScreen(
                 val post = posts[idx]
                 MomentPostCard(
                     post = post,
-                    appVm = appVm,
+                    isLast = idx == posts.lastIndex,
                     onLike = { onLike(post, appVm) { load() } },
                     onComment = {
                         commentReplyTo = null
@@ -335,7 +343,7 @@ fun MomentsScreen(
                     onPreview = { previewImage = it },
                 )
             }
-            item { Spacer(Modifier.height(32.dp)) }
+            item { Spacer(Modifier.height(88.dp)) }
         }
         }
 
@@ -348,10 +356,7 @@ fun MomentsScreen(
                 .navigationBarsPadding()
                 .padding(end = 20.dp, bottom = 24.dp),
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                MomentFabButton(icon = Icons.Rounded.Edit, contentDescription = "发布") { onCompose() }
-                MomentFabButton(icon = Icons.Rounded.MoreVert, contentDescription = "更多") { showMenu = true }
-            }
+            MomentFabButton(icon = Icons.Rounded.Edit, contentDescription = "发布") { onCompose() }
         }
 
         commentingPost?.let { target ->
@@ -359,19 +364,49 @@ fun MomentsScreen(
                 replyTo = commentReplyTo,
                 onSend = { text ->
                     val pid = target.id
-                    val body = JSONObject().apply { put("content", text) }
-                    ApiGateway.post("/api/moments/$pid/comment", body.toString(), AppSession.token(), object : ApiGateway.Callback {
-                        override fun onSuccess(response: String) {
-                            appVm.showToast("评论成功")
-                            commentingPost = null
-                            commentReplyTo = null
+                    val replyName = commentReplyTo
+                    val spoken = text.removePrefix(if (replyName.isNullOrBlank()) "" else "@$replyName").trim().ifBlank { text.trim() }
+                    postMomentComment(pid, text, null, appVm) {
+                        commentingPost = null
+                        commentReplyTo = null
+                        if (replyName.isNullOrBlank()) {
                             load()
+                            return@postMomentComment
                         }
+                        fun talk(friend: FriendManager.Friend) {
+                            appVm.showToast("${friend.name}正在回复…")
+                            ChatEngine.requestReply(
+                                context,
+                                ChatEngine.Persona(friend.name, friend.persona ?: "", friend.pat ?: ""),
+                                spoken,
+                                object : ChatEngine.ReplyCallback {
+                                    override fun onReply(reply: String) {
+                                        if (reply.isBlank()) {
+                                            load()
+                                            return
+                                        }
+                                        postMomentComment(pid, reply, friend.name, appVm) { load() }
+                                    }
 
-                        override fun onError(error: String?) {
-                            appVm.showToast("评论失败: ${error ?: ""}")
+                                    override fun onError(error: String) {
+                                        appVm.showToast("回复失败: $error")
+                                        load()
+                                    }
+                                },
+                            )
                         }
-                    })
+                        friendNamed(replyName)?.let { talk(it); return@postMomentComment }
+                        FriendManager.getAll(AppSession.token(), object : FriendManager.Callback {
+                            override fun onResult(list: MutableList<FriendManager.Friend>?) {
+                                val friend = list?.firstOrNull { it.name == replyName }
+                                if (friend == null) load() else talk(friend)
+                            }
+
+                            override fun onError(err: String?) {
+                                load()
+                            }
+                        })
+                    }
                 },
                 onCancel = {
                     commentingPost = null
@@ -389,12 +424,17 @@ fun MomentsScreen(
         LingXinMenuOverlay(
             items = listOf(
                 MenuItemSpec("发布动态", Icons.Rounded.Edit),
+                MenuItemSpec("更换封面", Icons.Outlined.Image),
                 MenuItemSpec("清空朋友圈", Icons.Rounded.DeleteOutline, danger = true),
             ),
             onDismiss = { showMenu = false },
             onSelect = { index ->
                 showMenu = false
-                if (index == 0) onCompose() else showClear = true
+                when (index) {
+                    0 -> onCompose()
+                    1 -> coverPick.launch("image/*")
+                    else -> showClear = true
+                }
             },
         )
     }
@@ -466,7 +506,7 @@ fun MomentsScreen(
         ImageCropperDialog(
             path = path,
             frameAspect = context.resources.displayMetrics.let {
-                it.widthPixels.toFloat() / (it.density * 230f)
+                (it.widthPixels - it.density * 32f) / (it.density * 140f)
             },
             onConfirm = { bmp ->
                 coverCropSource = null
@@ -518,6 +558,35 @@ private fun normalizeAiComment(raw: String, postContent: String, aiName: String)
         )
     }
     return variants[(aiName.hashCode() and Int.MAX_VALUE) % variants.size]
+}
+
+private fun friendNamed(name: String?): FriendManager.Friend? {
+    if (name.isNullOrBlank()) return null
+    return FriendManager.getCachedFriends().firstOrNull { it.name == name }
+}
+
+private fun postMomentComment(
+    postId: Int,
+    content: String,
+    aiName: String?,
+    appVm: AppViewModel,
+    onDone: () -> Unit,
+) {
+    val body = JSONObject().apply {
+        put("content", content)
+        if (!aiName.isNullOrBlank()) put("ai_name", aiName)
+    }
+    ApiGateway.post("/api/moments/$postId/comment", body.toString(), AppSession.token(), object : ApiGateway.Callback {
+        override fun onSuccess(response: String) {
+            if (aiName.isNullOrBlank()) appVm.showToast("评论成功")
+            onDone()
+        }
+
+        override fun onError(error: String?) {
+            appVm.showToast(if (aiName.isNullOrBlank()) "评论失败: ${error ?: ""}" else "回复没能发到朋友圈: ${error ?: ""}")
+            onDone()
+        }
+    })
 }
 
 private fun onLike(post: MomentPost, appVm: AppViewModel, reload: () -> Unit) {
@@ -631,7 +700,7 @@ private fun aiBatchComment(post: MomentPost, appVm: AppViewModel, reload: () -> 
 @Composable
 private fun MomentPostCard(
     post: MomentPost,
-    appVm: AppViewModel,
+    isLast: Boolean,
     onLike: () -> Unit,
     onComment: () -> Unit,
     onReplyComment: (String) -> Unit,
@@ -640,40 +709,71 @@ private fun MomentPostCard(
     onDelete: () -> Unit,
     onPreview: (String) -> Unit,
 ) {
-    var showActions by remember { mutableStateOf(false) }
     var commentsExpanded by remember { mutableStateOf(false) }
+    val line = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.16f)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(IntrinsicSize.Min)
             .combinedClickable(onClick = {}, onLongClick = onDelete)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(start = 16.dp, end = 16.dp),
     ) {
-        MomentAvatar(post = post, size = 42.dp)
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Box(modifier = Modifier.width(22.dp).fillMaxHeight()) {
+            if (!isLast) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 26.dp)
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(line),
+                )
+            }
+            MomentAvatar(
+                post = post,
+                size = 22.dp,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 10.dp, bottom = 22.dp),
+        ) {
+            Text(
+                post.time,
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+            )
             Text(
                 post.nickname,
-                fontSize = 14.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MiuixTheme.colorScheme.primary,
             )
             if (post.content.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Text(post.content, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(6.dp))
+                Text(post.content, fontSize = 15.sp, lineHeight = 22.sp, color = MiuixTheme.colorScheme.onSurface)
             }
             if (post.images.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                MomentImageGrid(images = post.images, onPreview = onPreview)
+                Spacer(Modifier.height(10.dp))
+                if (post.images.size == 1) {
+                    WebImage(
+                        url = post.images[0],
+                        contentDescription = "动态图片",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onPreview(post.images[0]) },
+                    )
+                } else {
+                    MomentImageGrid(images = post.images, onPreview = onPreview)
+                }
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    post.time,
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-                    modifier = Modifier.weight(1f),
-                )
                 MomentAction(
                     icon = if (post.liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                     label = if (post.likesCount > 0) "${post.likesCount}" else "赞",
@@ -703,49 +803,48 @@ private fun MomentPostCard(
                     onClick = onAiBatchComment,
                 )
             }
-
             if (post.comments.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MiuixTheme.colorScheme.surfaceContainer,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(modifier = Modifier.padding(10.dp)) {
-                        val shown = if (commentsExpanded) post.comments else post.comments.take(4)
-                        shown.forEach { c ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onReplyComment(c.name) }
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.Top,
-                            ) {
-                                    Text(
-                                        buildString {
-                                            append(c.name)
-                                            if (c.isAi) append(" [AI]")
-                                            append("：")
-                                            append(c.content)
-                                        },
-                                        fontSize = 13.sp,
-                                        color = MiuixTheme.colorScheme.onSurface,
-                                    )
+                val shown = if (commentsExpanded) post.comments else post.comments.take(4)
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    shown.forEach { c ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onReplyComment(c.name) }
+                                .padding(vertical = 4.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    c.name,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MiuixTheme.colorScheme.primary,
+                                )
+                                if (c.isAi) {
+                                    Spacer(Modifier.width(6.dp))
+                                    AiMark()
+                                }
                             }
-                        }
-                        if (post.comments.size > 4) {
                             Text(
-                                if (commentsExpanded) "收起" else "展开全部${post.comments.size}条评论",
+                                c.content,
                                 fontSize = 13.sp,
-                                color = MiuixTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { commentsExpanded = !commentsExpanded }
-                                    .padding(vertical = 4.dp),
+                                lineHeight = 20.sp,
+                                color = MiuixTheme.colorScheme.onSurface,
                             )
                         }
+                    }
+                    if (post.comments.size > 4) {
+                        Text(
+                            if (commentsExpanded) "收起" else "展开全部${post.comments.size}条评论",
+                            fontSize = 13.sp,
+                            color = MiuixTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { commentsExpanded = !commentsExpanded }
+                                .padding(vertical = 4.dp),
+                        )
                     }
                 }
             }
@@ -765,7 +864,7 @@ private fun MomentAction(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 5.dp),
+            .padding(end = 10.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
@@ -780,19 +879,35 @@ private fun MomentAction(
 }
 
 @Composable
-private fun MomentAvatar(post: MomentPost, size: androidx.compose.ui.unit.Dp) {
+private fun AiMark() {
+    Text(
+        "AI",
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Medium,
+        color = MiuixTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier
+            .clip(RoundedCornerShape(99.dp))
+            .background(MiuixTheme.colorScheme.secondaryContainer)
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}
+
+@Composable
+private fun MomentAvatar(post: MomentPost, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     if (post.avatar.isNotEmpty() && post.avatar.startsWith("/api/user/avatar/")) {
         WebImage(
             url = post.avatar,
             contentDescription = post.nickname,
-            modifier = Modifier
+            modifier = modifier
                 .size(size)
                 .clip(CircleShape),
             placeholder = { com.zhiyin.ui.DefaultAvatar(size = size) },
         )
     } else {
         val friendId = remember(post.nickname) { FriendManager.findIdByName(post.nickname) }
-        PersonaAvatar(contactId = friendId, name = post.nickname, size = size)
+        Box(modifier.size(size).clip(CircleShape)) {
+            PersonaAvatar(contactId = friendId, name = post.nickname, size = size)
+        }
     }
 }
 

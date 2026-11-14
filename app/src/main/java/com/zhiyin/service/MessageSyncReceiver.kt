@@ -11,9 +11,20 @@ import org.json.JSONObject
 
 object MessageSyncScheduler {
     private const val REQUEST_CODE = 2001
-    private const val INTERVAL_MS = 10 * 60 * 1000L
+    private const val INTERVAL_MS = 3 * 60 * 1000L
 
     fun start(context: Context) {
+        val app = context.applicationContext
+        schedule(app)
+        Thread {
+            try {
+                MessageSyncReceiver().poll(app)
+            } catch (_: Exception) {
+            }
+        }.start()
+    }
+
+    fun schedule(context: Context) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         am.setAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,
@@ -42,44 +53,54 @@ class MessageSyncReceiver : BroadcastReceiver() {
         val pending = goAsync()
         Thread {
             try {
-                pollSilently(context)
+                poll(context)
             } catch (_: Exception) {
             } finally {
-                MessageSyncScheduler.start(context)
+                MessageSyncScheduler.schedule(context)
                 pending.finish()
             }
         }.start()
     }
 
-    private fun pollSilently(context: Context) {
+    fun poll(context: Context) {
         val token = ApiGateway.getToken(context) ?: return
         if (token.isEmpty()) return
         pollLockCommand(context, token)
+        var changed = false
+        val arrived = LinkedHashMap<String, String>()
         try {
             val resp = ApiGateway.getSync(ApiGateway.ZHIYIN_BASE + "/api/chat/active-messages", token)
-            val messages = JSONObject(resp).optJSONArray("messages") ?: return
-            val seen = context.getSharedPreferences("zhiyin_sync", 0)
-            var seenSet = seen.getStringSet("seen", emptySet())?.toMutableSet() ?: mutableSetOf()
-            if (seenSet.size > 400) seenSet = mutableSetOf()
-            val batches = LinkedHashMap<String, MutableList<MsgRepo.RemoteMsg>>()
-            var dirty = false
-            for (i in 0 until messages.length()) {
-                val msg = messages.getJSONObject(i)
-                val persona = msg.optString("persona_name", "")
-                val content = msg.optString("content", "").trim()
-                if (persona.isEmpty() || content.isEmpty()) continue
-                val time = parseMsgTime(msg)
-                val key = "$persona|$time|${content.hashCode()}"
-                if (seenSet.contains(key)) continue
-                seenSet.add(key)
-                dirty = true
-                batches.getOrPut(persona) { mutableListOf() }.add(MsgRepo.RemoteMsg("ai", content, time))
+            val messages = JSONObject(resp).optJSONArray("messages")
+            if (messages != null) {
+                val seen = context.getSharedPreferences("zhiyin_sync", 0)
+                var seenSet = seen.getStringSet("seen", emptySet())?.toMutableSet() ?: mutableSetOf()
+                if (seenSet.size > 400) seenSet = mutableSetOf()
+                val batches = LinkedHashMap<String, MutableList<MsgRepo.RemoteMsg>>()
+                var dirty = false
+                for (i in 0 until messages.length()) {
+                    val msg = messages.getJSONObject(i)
+                    val persona = msg.optString("persona_name", "")
+                    val content = msg.optString("content", "").trim()
+                    if (persona.isEmpty() || content.isEmpty()) continue
+                    val time = parseMsgTime(msg)
+                    val key = if (time > 0) "$persona|$time|${content.hashCode()}" else "$persona|${content.hashCode()}"
+                    if (seenSet.contains(key)) continue
+                    seenSet.add(key)
+                    dirty = true
+                    batches.getOrPut(persona) { mutableListOf() }.add(MsgRepo.RemoteMsg("ai", content, time))
+                    arrived[persona] = content
+                }
+                for ((persona, batch) in batches) {
+                    if (MsgRepo.addRemoteBatchIfAbsent(context, "persona_$persona", batch)) changed = true
+                }
+                if (dirty) seen.edit().putStringSet("seen", seenSet).apply()
             }
-            for ((persona, batch) in batches) {
-                MsgRepo.addRemoteBatchIfAbsent(context, "persona_$persona", batch)
-            }
-            if (dirty) seen.edit().putStringSet("seen", seenSet).apply()
         } catch (_: Exception) {
+        }
+        if (pullExternal(context, arrived)) changed = true
+        if (changed) {
+            com.zhiyin.logic.chat.ChatEngine.notifyMessagesChanged()
+            notifyArrivals(context, arrived)
         }
         try {
             val resp = ApiGateway.getSync(ApiGateway.ZHIYIN_BASE + "/api/notifications/unread-count", token)
@@ -115,8 +136,51 @@ class MessageSyncReceiver : BroadcastReceiver() {
         }
     }
 
+    private fun pullExternal(context: Context, arrived: MutableMap<String, String>): Boolean {
+        return try {
+            ApiGateway.ensureMemoryServiceUrl(context)
+            val base = ApiGateway.getMemoryServiceUrl()
+            val userId = ApiGateway.getUserId(context)
+            if (base.isNullOrEmpty() || userId.isNullOrEmpty()) return false
+            val response = ApiGateway.memoryRequestSync("$base/api/external-messages", "GET", null, userId)
+            val messages = JSONObject(response).optJSONArray("messages") ?: return false
+            val batches = LinkedHashMap<String, MutableList<MsgRepo.RemoteMsg>>()
+            for (i in 0 until messages.length()) {
+                val m = messages.optJSONObject(i) ?: continue
+                val sid = m.optString("sessionId", "")
+                if (!sid.startsWith("persona_")) continue
+                val content = m.optString("content", "")
+                if (content.isBlank()) continue
+                val role = if (m.optString("role") == "user") "user" else "ai"
+                val time = parseMsgTime(m)
+                batches.getOrPut(sid) { mutableListOf() }.add(MsgRepo.RemoteMsg(role, content, time))
+                if (role == "ai") arrived[sid.removePrefix("persona_")] = content
+            }
+            var changed = false
+            for ((sid, batch) in batches) {
+                if (MsgRepo.addRemoteBatchIfAbsent(context, sid, batch)) changed = true
+            }
+            changed
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun notifyArrivals(context: Context, arrived: Map<String, String>) {
+        val enabled = context.getSharedPreferences("zhiyin", Context.MODE_PRIVATE)
+            .getBoolean("notify_enabled", true)
+        if (!enabled) return
+        val active = MsgRepo.getActiveSession()
+        for ((persona, content) in arrived) {
+            if (active == "persona_$persona") continue
+            com.zhiyin.MsgNotifications.showAiReply(
+                context, persona, com.zhiyin.logic.chat.ChatEngine.previewText(content), -1
+            )
+        }
+    }
+
     private fun parseMsgTime(msg: JSONObject): Long {
-        val t = msg.optLong("time", 0L)
+        val t = MsgRepo.normalizeEpoch(msg.optLong("time", 0L))
         if (t > 0) return t
         val s = msg.optString("created_at", "")
         if (s.isNotEmpty()) {
@@ -128,7 +192,7 @@ class MessageSyncReceiver : BroadcastReceiver() {
             } catch (_: Exception) {
             }
         }
-        return System.currentTimeMillis()
+        return 0L
     }
 }
 

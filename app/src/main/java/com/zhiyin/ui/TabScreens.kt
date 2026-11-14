@@ -69,6 +69,7 @@ import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
@@ -81,6 +82,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,6 +100,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.data.GroupManager
 import com.zhiyin.logic.net.ApiGateway
@@ -125,6 +128,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -965,6 +969,17 @@ fun SettingsScreen(
 ) {
     val darkTheme by appVm.darkMode.collectAsState()
     val notifyEnabled by appVm.notifyEnabled.collectAsState()
+    val scope = rememberCoroutineScope()
+    val gapChoices = com.zhiyin.data.AccountApi.activeGapChoices
+    var gapMin by remember { mutableIntStateOf(20) }
+    var gapSlider by remember { mutableFloatStateOf(1f) }
+    LaunchedEffect(Unit) {
+        com.zhiyin.data.AccountApi.getActiveGap().onSuccess { saved ->
+            val idx = gapChoices.indexOf(saved).let { if (it < 0) 1 else it }
+            gapMin = gapChoices[idx]
+            gapSlider = idx.toFloat()
+        }
+    }
     val themeId by appVm.themeId.collectAsState()
     var showLogout by remember { mutableStateOf(false) }
     var showThemePicker by remember { mutableStateOf(false) }
@@ -1011,6 +1026,29 @@ fun SettingsScreen(
                         startAction = { MenuIcon(Icons.Rounded.Notifications) },
                         checked = notifyEnabled,
                         onCheckedChange = { appVm.toggleNotify(it) },
+                    )
+                    RowDivider()
+                    SliderPreference(
+                        value = gapSlider,
+                        onValueChange = { raw ->
+                            val idx = raw.roundToInt().coerceIn(0, gapChoices.lastIndex)
+                            gapSlider = idx.toFloat()
+                            gapMin = gapChoices[idx]
+                        },
+                        title = "离开多久后主动发",
+                        summary = "对所有角色生效。安静这么久后可以主动找你，发出后至少再隔 2 小时。",
+                        startAction = { MenuIcon(Icons.Rounded.Schedule) },
+                        valueText = com.zhiyin.data.AccountApi.activeGapLabel(gapMin),
+                        valueRange = 0f..gapChoices.lastIndex.toFloat(),
+                        steps = gapChoices.size - 2,
+                        onValueChangeFinished = {
+                            val picked = gapChoices[gapSlider.roundToInt().coerceIn(0, gapChoices.lastIndex)]
+                            scope.launch {
+                                com.zhiyin.data.AccountApi.saveActiveGap(picked)
+                                    .onSuccess { appVm.showToast("已改为离开${com.zhiyin.data.AccountApi.activeGapLabel(it)}后主动发") }
+                                    .onFailure { appVm.showToast(it.message ?: "保存失败") }
+                            }
+                        },
                     )
                 }
 
