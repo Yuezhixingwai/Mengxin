@@ -254,30 +254,36 @@ fun AuthScreen(
             Spacer(Modifier.height(20.dp))
 
             AuthEntrance(260) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { agreed = !agreed },
-                ) {
-                    Checkbox(
-                        state = if (agreed) ToggleableState.On else ToggleableState.Off,
-                        onClick = { agreed = !agreed },
-                    )
-                    Text(
-                        "我同意",
-                        fontSize = 13.sp,
-                        color = colors.onSurfaceVariantSummary,
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { agreed = !agreed },
+                    ) {
+                        Checkbox(
+                            state = if (agreed) ToggleableState.On else ToggleableState.Off,
+                            onClick = { agreed = !agreed },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "我同意",
+                            fontSize = 13.sp,
+                            color = colors.onSurfaceVariantSummary,
+                        )
+                    }
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         "用户协议",
                         fontSize = 13.sp,
                         color = colors.primary,
                         modifier = Modifier.clickable { agreementType = "user-agreement" },
                     )
+                    Spacer(Modifier.width(2.dp))
                     Text(
                         "与",
                         fontSize = 13.sp,
                         color = colors.onSurfaceVariantSummary,
                     )
+                    Spacer(Modifier.width(2.dp))
                     Text(
                         "隐私政策",
                         fontSize = 13.sp,

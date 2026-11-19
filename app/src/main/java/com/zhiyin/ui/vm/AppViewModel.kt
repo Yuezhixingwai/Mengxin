@@ -2,6 +2,7 @@ package com.zhiyin.ui.vm
 
 import android.app.Application
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -64,6 +65,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app), ChatEngine.Listene
 
     var userInfo by mutableStateOf<AccountApi.UserInfo?>(null)
         private set
+
+    var membershipRefreshTick by mutableIntStateOf(0)
+        private set
+
+    fun notifyMembershipChanged() {
+        membershipRefreshTick++
+    }
 
     var toastId by mutableLongStateOf(0L)
         private set

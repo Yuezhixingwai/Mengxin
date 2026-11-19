@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhiyin.R
+import com.zhiyin.data.AccountApi
 import com.zhiyin.data.AppSession
 import com.zhiyin.logic.net.ApiGateway
 import com.zhiyin.ui.BackButton
@@ -132,20 +133,42 @@ private fun fmtAmount(v: Double): String =
     if (v == Math.floor(v) && !v.isInfinite()) Math.round(v).toString()
     else (Math.round(v * 100) / 100.0).toString()
 
+private fun formatMemberExpiresShort(raw: String): String {
+    val t = raw.trim()
+    if (t.length >= 10) return t.substring(0, 10)
+    return t
+}
+
 @Composable
 fun SubscriptionScreen(
     appVm: AppViewModel,
     onBack: () -> Unit,
     onOpenRecharge: () -> Unit,
+    onOpenMembershipRedeem: () -> Unit = {},
 ) {
     val colors = MiuixTheme.colorScheme
     var billingPeriod by rememberSaveable { mutableStateOf("yearly") }
     var payment by rememberSaveable { mutableStateOf(PaymentMethod.WECHAT) }
+    var memberActive by remember { mutableStateOf(false) }
+    var memberExpiresAt by remember { mutableStateOf("") }
+
+    LaunchedEffect(appVm.membershipRefreshTick) {
+        AccountApi.fetchMembershipStatus().onSuccess {
+            memberActive = it.active
+            memberExpiresAt = it.expiresAt
+        }
+    }
 
     val plan = if (billingPeriod == "monthly") monthlyPlan else yearlyPlan
-    val total = if (billingPeriod == "monthly") "¥18" else "¥128"
-    val totalNote = if (billingPeriod == "monthly") "连续包月 · 自动续费，可随时取消"
+    val planPrice = if (billingPeriod == "monthly") "¥18" else "¥128"
+    val subscribeNote = if (billingPeriod == "monthly") "连续包月 · 自动续费，可随时取消"
     else "连续包年 · 自动续费，可随时取消"
+
+    val barTotal = if (memberActive) "会员已开通" else planPrice
+    val barNote = if (memberActive && memberExpiresAt.isNotBlank()) {
+        "有效期至 ${formatMemberExpiresShort(memberExpiresAt)} · 可用兑换码叠加续期"
+    } else subscribeNote
+    val barButton = if (memberActive) "兑换码续期" else "立即订阅"
 
     Scaffold(
         containerColor = colors.surface,
@@ -157,8 +180,9 @@ fun SubscriptionScreen(
             )
         },
         bottomBar = {
-            PayBottomBar(total = total, note = totalNote, buttonText = "立即订阅") {
-                appVm.showToast("订阅支付")
+            PayBottomBar(total = barTotal, note = barNote, buttonText = barButton) {
+                if (memberActive) onOpenMembershipRedeem()
+                else appVm.showToast("订阅支付")
             }
         },
     ) { padding ->
@@ -174,15 +198,75 @@ fun SubscriptionScreen(
                     .padding(bottom = 12.dp),
             ) {
                 MemberHeroCard(onOpenRecharge)
-                BenefitSection()
+                if (memberActive) {
+                    MembershipActiveCard(
+                        expiresAt = memberExpiresAt,
+                        onOpenMembershipRedeem = onOpenMembershipRedeem,
+                    )
+                }
                 BillingPeriodSwitch(
                     period = billingPeriod,
                     onPeriodChange = { billingPeriod = it },
                 )
                 SubscriptionPlanCard(plan = plan)
+                BenefitSection()
                 PaymentMethodSelector(selected = payment, onSelect = { payment = it })
-                SubscriptionNotes(appVm)
+                SubscriptionNotes(appVm, onOpenMembershipRedeem)
             }
+        }
+    }
+}
+
+@Composable
+private fun MembershipActiveCard(
+    expiresAt: String,
+    onOpenMembershipRedeem: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        CardContainer {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "当前状态",
+                    fontSize = 13.sp,
+                    color = colors.onSurfaceVariantSummary,
+                )
+                Spacer(Modifier.weight(1f))
+                Surface(shape = RoundedCornerShape(50), color = Color(0xFFDCFCE7)) {
+                    Text(
+                        "已开通",
+                        color = Color(0xFF16A34A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (expiresAt.isNotBlank()) "会员到期时间：${formatMemberExpiresShort(expiresAt)}" else "会员到期时间：--",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface,
+            )
+            Text(
+                "续费：使用兑换码叠加时长，或选择下方套餐订阅（支付通道预留）",
+                fontSize = 12.sp,
+                color = colors.onSurfaceVariantSummary,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            TextButton(
+                text = "去兑换 / 续期",
+                onClick = onOpenMembershipRedeem,
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                textStyle = TextStyle(fontSize = 14.sp),
+                insideMargin = PaddingValues(horizontal = 0.dp, vertical = 6.dp),
+                minWidth = 0.dp,
+                minHeight = 32.dp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
         }
     }
 }
@@ -471,23 +555,28 @@ private fun SubscriptionPlanCard(plan: PlanSpec) {
 }
 
 @Composable
-private fun SubscriptionNotes(appVm: AppViewModel) {
+private fun SubscriptionNotes(appVm: AppViewModel, onOpenMembershipRedeem: () -> Unit = {}) {
     val colors = MiuixTheme.colorScheme
     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
         Text(
             "· 会员服务为虚拟商品，订阅成功后立即生效\n" +
                 "· 连续包月 / 包年到期前将自动续费，可随时取消\n" +
-                "· 支持微信支付、支付宝及银联 / VISA / Mastercard 银行卡",
+                "· 已有兑换码可在「兑换码续期」叠加会员时长",
             fontSize = 12.sp,
             color = colors.onSurfaceVariantSummary,
         )
-        Row(modifier = Modifier.padding(top = 4.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             TextButton(
                 text = "自动续费说明",
                 onClick = { appVm.showToast("自动续费") },
                 colors = ButtonDefaults.textButtonColorsPrimary(),
                 textStyle = TextStyle(fontSize = 12.sp),
-                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 minWidth = 0.dp,
                 minHeight = 32.dp,
             )
@@ -496,16 +585,16 @@ private fun SubscriptionNotes(appVm: AppViewModel) {
                 onClick = { appVm.showToast("会员服务") },
                 colors = ButtonDefaults.textButtonColorsPrimary(),
                 textStyle = TextStyle(fontSize = 12.sp),
-                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 minWidth = 0.dp,
                 minHeight = 32.dp,
             )
             TextButton(
-                text = "恢复购买",
-                onClick = { appVm.showToast("恢复购买") },
+                text = "兑换码续期",
+                onClick = onOpenMembershipRedeem,
                 colors = ButtonDefaults.textButtonColorsPrimary(),
                 textStyle = TextStyle(fontSize = 12.sp),
-                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 minWidth = 0.dp,
                 minHeight = 32.dp,
             )

@@ -527,4 +527,68 @@ object AccountApi {
                 Result.failure(Exception(extractError(e)))
             }
         }
+
+    data class MembershipStatus(val active: Boolean, val expiresAt: String)
+
+    suspend fun fetchMembershipStatus(): Result<MembershipStatus> = withContext(Dispatchers.IO) {
+        try {
+            val ctx = com.zhiyin.logic.AppHolder.app()!!
+            val resp = ApiGateway.requestSync(
+                ApiGateway.ZHIYIN_BASE + "/api/membership/status", "GET", null, ApiGateway.getToken(ctx)
+            )
+            val json = JSONObject(resp)
+            Result.success(
+                MembershipStatus(
+                    active = json.optBoolean("active", false),
+                    expiresAt = json.optString("expires_at", ""),
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(Exception(extractError(e)))
+        }
+    }
+
+    data class MembershipRedeemHistoryItem(val months: Int, val redeemedAt: String, val codeMask: String)
+
+    suspend fun fetchMembershipRedeemHistory(): Result<List<MembershipRedeemHistoryItem>> = withContext(Dispatchers.IO) {
+        try {
+            val ctx = com.zhiyin.logic.AppHolder.app()!!
+            val resp = ApiGateway.requestSync(
+                ApiGateway.ZHIYIN_BASE + "/api/membership/redeem-history", "GET", null, ApiGateway.getToken(ctx)
+            )
+            val arr = JSONObject(resp).optJSONArray("history") ?: org.json.JSONArray()
+            val list = buildList {
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    add(
+                        MembershipRedeemHistoryItem(
+                            months = o.optInt("months", 0),
+                            redeemedAt = o.optString("redeemed_at", ""),
+                            codeMask = o.optString("code_mask", ""),
+                        )
+                    )
+                }
+            }
+            Result.success(list)
+        } catch (e: Exception) {
+            Result.failure(Exception(extractError(e)))
+        }
+    }
+
+    data class MembershipRedeemResult(val months: Int, val expiresAt: String)
+
+    suspend fun redeemMembership(code: String): Result<MembershipRedeemResult> = withContext(Dispatchers.IO) {
+        try {
+            val ctx = com.zhiyin.logic.AppHolder.app()!!
+            val body = JSONObject().put("code", code).toString()
+            val resp = ApiGateway.requestSync(
+                ApiGateway.ZHIYIN_BASE + "/api/membership/redeem", "POST", body, ApiGateway.getToken(ctx)
+            )
+            val json = JSONObject(resp)
+            if (!json.optBoolean("ok", false)) Result.failure(Exception(json.optString("error", "兑换失败")))
+            else Result.success(MembershipRedeemResult(json.optInt("months", 0), json.optString("expires_at", "")))
+        } catch (e: Exception) {
+            Result.failure(Exception(extractError(e)))
+        }
+    }
 }

@@ -81,6 +81,7 @@ import com.zhiyin.data.AccountApi
 import com.zhiyin.data.AvatarStore
 import com.zhiyin.data.PrivacyManager
 import com.zhiyin.data.PaymentPasswordManager
+import com.zhiyin.logic.net.ApiGateway
 import com.zhiyin.ui.BackButton
 import com.zhiyin.ui.CardContainer
 import com.zhiyin.ui.EmptyHint
@@ -1497,6 +1498,25 @@ fun AboutScreen(appVm: AppViewModel, onBack: () -> Unit, onOpenAboutUs: () -> Un
     var checking by remember { mutableStateOf(false) }
     var newVersion by remember { mutableStateOf<AccountApi.VersionInfo?>(null) }
     var upToDate by remember { mutableStateOf(false) }
+    var versionTapCount by remember { mutableIntStateOf(0) }
+    var lastVersionTapAt by remember { mutableStateOf(0L) }
+    var showLocalServerDialog by remember { mutableStateOf(false) }
+    var localServerAddress by remember { mutableStateOf("") }
+
+    fun handleVersionTap() {
+        val now = System.currentTimeMillis()
+        versionTapCount = if (now - lastVersionTapAt > 2_500L) 1 else versionTapCount + 1
+        lastVersionTapAt = now
+        if (versionTapCount < 10) return
+        versionTapCount = 0
+        if (ApiGateway.isUsingCustomServer()) {
+            ApiGateway.useOnlineServer(context)
+            appVm.showToast("已切换至线上服务")
+        } else {
+            localServerAddress = ""
+            showLocalServerDialog = true
+        }
+    }
 
     Scaffold(
         containerColor = colors.surface,
@@ -1540,6 +1560,7 @@ fun AboutScreen(appVm: AppViewModel, onBack: () -> Unit, onOpenAboutUs: () -> Un
                         "版本号 $versionName",
                         fontSize = 14.sp,
                         color = colors.onSurfaceVariantSummary,
+                        modifier = Modifier.clickable { handleVersionTap() },
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -1639,6 +1660,31 @@ fun AboutScreen(appVm: AppViewModel, onBack: () -> Unit, onOpenAboutUs: () -> Un
             onConfirm = { upToDate = false },
         )
     }
+    if (showLocalServerDialog) {
+        LingXinDialog(
+            onDismiss = { showLocalServerDialog = false },
+            title = "切换至本地服务",
+            text = "输入局域网 IP 或完整地址；未填端口时默认使用 9002。",
+            confirmText = "切换",
+            onConfirm = {
+                try {
+                    ApiGateway.setServerUrl(context, localServerAddress)
+                    appVm.showToast("已切换至本地服务：${ApiGateway.getBaseUrl()}")
+                } catch (_: IllegalArgumentException) {
+                    appVm.showToast("请输入有效的本地 IP 或地址")
+                }
+            },
+        ) {
+            TextField(
+                value = localServerAddress,
+                onValueChange = { localServerAddress = it },
+                label = "例如 192.168.1.10:9002",
+                useLabelAsPlaceholder = true,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
 }
 
 @Composable
@@ -1722,6 +1768,7 @@ fun AboutUsScreen(onBack: () -> Unit) {
             }
         }
     }
+
 }
 
 @Composable

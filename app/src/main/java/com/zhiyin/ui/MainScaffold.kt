@@ -167,6 +167,8 @@ sealed interface Overlay {
     data class Chat(val name: String, val desc: String, val id: Int) : Overlay
     data class Call(val name: String, val desc: String, val id: Int) : Overlay
     data object Invite : Overlay
+    data object MembershipRedeem : Overlay
+    data object MembershipRedeemHistory : Overlay
     data class Group(val name: String, val members: List<String>?) : Overlay
     data object Settings : Overlay
     data object PhoneAgent : Overlay
@@ -449,6 +451,15 @@ fun MainScaffold(appVm: AppViewModel) {
                         appVm = appVm,
                         onBack = { pop() },
                     )
+                    Overlay.MembershipRedeem -> com.zhiyin.ui.me.MembershipRedeemScreen(
+                        appVm = appVm,
+                        onBack = { pop() },
+                        onRedeemed = { appVm.notifyMembershipChanged() },
+                        onOpenHistory = { push(Overlay.MembershipRedeemHistory) },
+                    )
+                    Overlay.MembershipRedeemHistory -> com.zhiyin.ui.me.MembershipRedeemHistoryScreen(
+                        onBack = { pop() },
+                    )
                     is Overlay.Group -> GroupChatScreen(
                         groupName = o.name,
                         members = o.members,
@@ -517,6 +528,7 @@ fun MainScaffold(appVm: AppViewModel) {
                         appVm = appVm,
                         onBack = { pop() },
                         onOpenRecharge = { push(Overlay.Recharge) },
+                        onOpenMembershipRedeem = { push(Overlay.MembershipRedeem) },
                     )
                     Overlay.Recharge -> RechargeScreen(
                         appVm = appVm,
@@ -719,6 +731,7 @@ fun MainScaffold(appVm: AppViewModel) {
                         onOpenFavorites = { push(Overlay.Favorites) },
                         onOpenSavedImages = { push(Overlay.SavedImages) },
                         onOpenInvite = { push(Overlay.Invite) },
+                        onOpenMembershipRedeem = { push(Overlay.MembershipRedeem) },
                         onOpenSavedFiles = { push(Overlay.SavedFiles) },
                         onOpenSubscription = { push(Overlay.Subscription) },
                         onOpenRecharge = { push(Overlay.Recharge) },
@@ -950,6 +963,7 @@ private fun MainContent(
     onOpenFavorites: () -> Unit = {},
     onOpenSavedImages: () -> Unit = {},
     onOpenInvite: () -> Unit = {},
+    onOpenMembershipRedeem: () -> Unit = {},
     onOpenSavedFiles: () -> Unit = {},
     onOpenSubscription: () -> Unit = {},
     onOpenRecharge: () -> Unit = {},
@@ -1086,6 +1100,7 @@ private fun MainContent(
                             onOpenSubscription = onOpenSubscription,
                             onOpenRecharge = onOpenRecharge,
                             onOpenInvite = onOpenInvite,
+                            onOpenMembershipRedeem = onOpenMembershipRedeem,
                             onOpenPersonaDetail = onOpenPersonaDetail,
                             onOpenCreatePersona = onOpenCreatePersona,
                         )

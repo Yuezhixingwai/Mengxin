@@ -3,12 +3,20 @@
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +40,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.UploadFile
@@ -41,6 +50,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,8 +70,10 @@ import com.zhiyin.logic.data.MsgRepo
 import com.zhiyin.logic.data.PersonaManager
 import com.zhiyin.logic.net.ApiGateway
 import com.zhiyin.ui.BackButton
+import com.zhiyin.ui.CardContainer
 import com.zhiyin.ui.EmptyHint
 import com.zhiyin.ui.RubberBandBox
+import com.zhiyin.ui.RowDivider
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.PersonaAvatar
 import com.zhiyin.ui.vm.AppViewModel
@@ -93,7 +105,7 @@ fun AddFriendScreen(
 ) {
     val context = LocalContext.current
     val colors = MiuixTheme.colorScheme
-    var tab by remember { mutableStateOf("plaza") }
+    var tab by rememberSaveable { mutableStateOf("plaza") }
     var mine by remember { mutableStateOf<List<com.zhiyin.data.PersonaLight>>(emptyList()) }
     var favs by remember { mutableStateOf<List<com.zhiyin.data.PersonaLight>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
@@ -121,24 +133,24 @@ fun AddFriendScreen(
         }
     }
 
-    val doubaoImport = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
+    fun runImportUpload(apiPath: String, cachePrefix: String, uri: android.net.Uri?) {
+        uri ?: return
         appVm.showToast("正在导入…")
         thread {
             try {
-                val tempFile = java.io.File(context.cacheDir, "doubao_import_${System.currentTimeMillis()}.json")
+                val tempFile = java.io.File(context.cacheDir, "${cachePrefix}_${System.currentTimeMillis()}.json")
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     tempFile.outputStream().use { input.copyTo(it) }
                 }
                 val result = com.zhiyin.logic.net.ApiGateway.uploadSync(
-                    com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE + "/api/user/import/doubao",
+                    com.zhiyin.logic.net.ApiGateway.ZHIYIN_BASE + apiPath,
                     tempFile.absolutePath,
                     AppSession.token(),
                 )
                 tempFile.delete()
                 val json = org.json.JSONObject(result)
                 val ok = json.optBoolean("ok", false)
-                val message = json.optString("message", "导入完成")
+                val message = json.optString("message", json.optString("error", "导入完成"))
                 val detail = StringBuilder()
                 json.optJSONObject("results")?.let { r ->
                     r.optJSONArray("success")?.let { a ->
@@ -150,14 +162,14 @@ fun AddFriendScreen(
                         }
                     }
                     r.optJSONArray("skipped")?.let { a ->
-                        if (a.length() > 0) detail.append("跳过 ").append(a.length()).append(" 个")
+                        if (a.length() > 0) detail.append("跳过 ").append(a.length()).append(" 个\n")
                     }
                     r.optJSONArray("errors")?.let { a ->
                         if (a.length() > 0) detail.append("失败 ").append(a.length()).append(" 个")
                     }
                 }
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    importResult = Pair(ok, if (ok) "$message\n\n$detail" else message)
+                    importResult = Pair(ok, if (detail.isNotEmpty()) "$message\n\n$detail" else message)
                     appVm.loadFriends()
                 }
             } catch (e: Exception) {
@@ -166,6 +178,13 @@ fun AddFriendScreen(
                 }
             }
         }
+    }
+
+    val doubaoImport = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        runImportUpload("/api/user/import/doubao", "doubao_import", uri)
+    }
+    val deepseekImport = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        runImportUpload("/api/user/import/deepseek", "deepseek_import", uri)
     }
 
     val tabKeys = listOf("plaza", "mine", "favs", "import")
@@ -186,48 +205,76 @@ fun AddFriendScreen(
                 .padding(padding),
         ) {
             TabRow(
-                tabs = listOf("广场", "我发布的", "我收藏的", "导入"),
+                tabs = listOf("广场", "我发布", "我收藏", "导入"),
                 selectedTabIndex = tabKeys.indexOf(tab).coerceAtLeast(0),
                 onTabSelected = { tab = tabKeys[it] },
                 listState = rememberLazyListState(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             )
 
-            when (tab) {
-                "mine" -> {
-                    if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                    else PlazaContactList(mine, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
-                }
-                "favs" -> {
-                    if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                    else PlazaContactList(favs, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
-                }
-                "import" -> Column {
-                    EntryRow(
-                        icon = Icons.Rounded.UploadFile,
-                        iconTint = colors.primaryVariant,
-                        title = "导入豆包人设",
-                        summary = "从豆包导出的JSON文件一键导入",
-                        onClick = { doubaoImport.launch("application/json") },
-                    )
-                }
-                else -> Column {
-                    EntryRow(
-                        icon = Icons.Rounded.Explore,
-                        iconTint = colors.primary,
-                        title = "去人设广场挑选",
-                        summary = "热门榜、分类、推荐，发现喜欢的人设",
-                        onClick = onOpenPlaza,
-                    )
-                    EntryRow(
-                        icon = Icons.Rounded.Add,
-                        iconTint = colors.primary,
-                        title = "创建自定义人设",
-                        summary = "设定名称、人设、图片，可选择公开分享",
-                        onClick = onOpenCreate,
-                    )
+            AnimatedContent(
+                targetState = tab,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                transitionSpec = {
+                    val to = tabKeys.indexOf(targetState).coerceAtLeast(0)
+                    val from = tabKeys.indexOf(initialState).coerceAtLeast(0)
+                    val dir = if (to > from) 1 else -1
+                    (slideInHorizontally(tween(260)) { fullWidth -> fullWidth / 6 * dir } + fadeIn(tween(220))) togetherWith
+                        (slideOutHorizontally(tween(260)) { fullWidth -> -fullWidth / 6 * dir } + fadeOut(tween(180)))
+                },
+                label = "addFriendTab",
+            ) { currentTab ->
+                when (currentTab) {
+                    "mine" -> {
+                        if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        else PlazaContactList(mine, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
+                    }
+                    "favs" -> {
+                        if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        else PlazaContactList(favs, appVm, onAdd = ::addPersona, onOpenCreate = onOpenCreate)
+                    }
+                    "import" -> AddFriendTabScroll {
+                        CardContainer {
+                            EntryRow(
+                                icon = Icons.Rounded.UploadFile,
+                                iconTint = colors.primaryVariant,
+                                title = "导入豆包人设",
+                                summary = "从豆包导出的 JSON 文件一键导入",
+                                onClick = { doubaoImport.launch("application/json") },
+                            )
+                            RowDivider()
+                            EntryRow(
+                                icon = Icons.Rounded.Chat,
+                                iconTint = colors.primary,
+                                title = "导入 DeepSeek 聊天记录",
+                                summary = "选择 DeepSeek 导出 JSON，按会话生成好友并写入历史",
+                                onClick = { deepseekImport.launch("application/json") },
+                            )
+                        }
+                    }
+                    else -> AddFriendTabScroll {
+                        CardContainer {
+                            EntryRow(
+                                icon = Icons.Rounded.Explore,
+                                iconTint = colors.primary,
+                                title = "去人设广场挑选",
+                                summary = "热门榜、分类、推荐，发现喜欢的人设",
+                                onClick = onOpenPlaza,
+                            )
+                            RowDivider()
+                            EntryRow(
+                                icon = Icons.Rounded.Add,
+                                iconTint = colors.primary,
+                                title = "创建自定义人设",
+                                summary = "设定名称、人设、图片，可选择公开分享",
+                                onClick = onOpenCreate,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -245,6 +292,17 @@ fun AddFriendScreen(
 }
 
 @Composable
+private fun AddFriendTabScroll(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 28.dp),
+        content = content,
+    )
+}
+
+@Composable
 private fun EntryRow(
     icon: ImageVector,
     iconTint: Color,
@@ -257,7 +315,7 @@ private fun EntryRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -269,11 +327,26 @@ private fun EntryRow(
             Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 16.sp)
-            Spacer(Modifier.height(2.dp))
-            Text(summary, fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 4.dp),
+        ) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                summary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                color = colors.onSurfaceVariantSummary,
+            )
         }
+        Icon(
+            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = colors.onSurfaceVariantSummary.copy(alpha = 0.65f),
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
@@ -301,13 +374,23 @@ private fun PlazaContactList(
         }
         return
     }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 40.dp),
+    ) {
         items(list, key = { it.id }) { p ->
             val already = appVm.friends.any { it.name == p.name }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surfaceContainer,
+            ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 9.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
@@ -340,9 +423,10 @@ private fun PlazaContactList(
                     onClick = { onAdd(p) },
                     enabled = !already,
                     colors = ButtonDefaults.textButtonColorsPrimary(),
-                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     minHeight = 36.dp,
                 )
+            }
             }
         }
     }

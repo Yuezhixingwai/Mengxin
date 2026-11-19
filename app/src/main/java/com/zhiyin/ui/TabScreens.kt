@@ -14,6 +14,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -69,7 +71,6 @@ import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.rounded.PhotoLibrary
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
@@ -101,6 +102,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import com.zhiyin.data.AccountApi
 import com.zhiyin.logic.data.FriendManager
 import com.zhiyin.logic.data.GroupManager
 import com.zhiyin.logic.net.ApiGateway
@@ -113,6 +115,7 @@ import com.zhiyin.ui.vm.AppViewModel
 import java.text.Collator
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -128,7 +131,6 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -536,6 +538,7 @@ fun MeScreen(
     onOpenSubscription: () -> Unit = {},
     onOpenRecharge: () -> Unit = {},
     onOpenInvite: () -> Unit = {},
+    onOpenMembershipRedeem: () -> Unit = {},
     onOpenPersonaDetail: (Int) -> Unit = {},
     onOpenCreatePersona: () -> Unit = {},
 ) {
@@ -543,6 +546,15 @@ fun MeScreen(
     val userInfo = appVm.userInfo
     var coinBalance by remember { mutableStateOf<Double?>(null) }
     var coinToday by remember { mutableStateOf("") }
+    var memberActive by remember { mutableStateOf(false) }
+    var memberExpiresAt by remember { mutableStateOf("") }
+
+    LaunchedEffect(appVm.membershipRefreshTick) {
+        AccountApi.fetchMembershipStatus().onSuccess {
+            memberActive = it.active
+            memberExpiresAt = it.expiresAt
+        }
+    }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -702,16 +714,20 @@ fun MeScreen(
                         color = colors.onSurface,
                     )
                     Text(
-                        "订阅解锁无限畅聊与全部 AI 人设",
+                        if (memberActive && memberExpiresAt.isNotBlank()) {
+                            "有效期至 ${formatMemberExpires(memberExpiresAt)}"
+                        } else {
+                            "订阅解锁无限畅聊与全部 AI 人设"
+                        },
                         fontSize = 12.sp,
                         color = colors.onSurfaceVariantSummary,
                     )
                 }
                 Text(
-                    "立即开通",
+                    if (memberActive) "已开通" else "立即开通",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = colors.primary,
+                    color = if (memberActive) Color(0xFF16A34A) else colors.primary,
                 )
                 Icon(
                     Icons.AutoMirrored.Rounded.KeyboardArrowRight,
@@ -723,42 +739,12 @@ fun MeScreen(
         }
 
         StaggeredAppear(delay = 165) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp)
-                    .background(colors.surfaceContainer, RoundedCornerShape(20.dp))
-                    .clickable(onClick = onOpenInvite)
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    Icons.Rounded.CardGiftcard,
-                    contentDescription = null,
-                    tint = colors.primary,
-                    modifier = Modifier.size(26.dp),
-                )
-                Spacer(Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "邀请好友得灵心币",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.onSurface,
-                    )
-                    Text(
-                        "好友注册填你的邀请码，双方各得灵心币",
-                        fontSize = 12.sp,
-                        color = colors.onSurfaceVariantSummary,
-                    )
-                }
-                Icon(
-                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = colors.onSurfaceVariantSummary,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+            MePromoCarousel(
+                onOpenInvite,
+                onOpenMembershipRedeem,
+                memberActive = memberActive,
+                memberExpiresAt = memberExpiresAt,
+            )
         }
 
         StaggeredAppear(delay = 170) {
@@ -797,6 +783,106 @@ fun MeScreen(
 
         Spacer(Modifier.height(24.dp))
     }
+    }
+}
+
+private fun formatMemberExpires(raw: String): String {
+    val t = raw.trim()
+    if (t.length >= 10) return t.substring(0, 10)
+    return t
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MePromoCarousel(
+    onOpenInvite: () -> Unit,
+    onOpenMembershipRedeem: () -> Unit,
+    memberActive: Boolean = false,
+    memberExpiresAt: String = "",
+) {
+    val colors = MiuixTheme.colorScheme
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val activePage = pagerState.currentPage
+
+    LaunchedEffect(pagerState) {
+        while (true) {
+            delay(4500)
+            val next = (pagerState.currentPage + 1) % 2
+            pagerState.animateScrollToPage(next)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth(),
+            beyondViewportPageCount = 1,
+        ) { page ->
+            val invite = page == 0
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 72.dp)
+                    .background(androidx.compose.ui.graphics.Color.White, RoundedCornerShape(20.dp))
+                    .clickable { if (invite) onOpenInvite() else onOpenMembershipRedeem() }
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (invite) Icons.Rounded.CardGiftcard else Icons.Rounded.Star,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(26.dp),
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (invite) "邀请好友得灵心币" else if (memberActive) "灵心会员已开通" else "兑换灵心会员",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = androidx.compose.ui.graphics.Color(0xFF1F2937),
+                    )
+                    Text(
+                        when {
+                            invite -> "好友注册填你的邀请码，双方各得灵心币"
+                            memberActive && memberExpiresAt.isNotBlank() ->
+                                "有效期至 ${formatMemberExpires(memberExpiresAt)}，兑换码可叠加续期"
+                            else -> "输入兑换码，立即叠加会员有效期"
+                        },
+                        fontSize = 12.sp,
+                        color = androidx.compose.ui.graphics.Color(0xFF6B7280),
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = androidx.compose.ui.graphics.Color(0xFF9CA3AF),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            repeat(2) { index ->
+                Box(
+                    Modifier
+                        .padding(horizontal = 3.dp)
+                        .width(if (index == activePage) 18.dp else 6.dp)
+                        .height(5.dp)
+                        .background(
+                            if (index == activePage) colors.primary else colors.outline.copy(alpha = 0.35f),
+                            RoundedCornerShape(99.dp),
+                        ),
+                )
+            }
+        }
     }
 }
 
@@ -969,17 +1055,6 @@ fun SettingsScreen(
 ) {
     val darkTheme by appVm.darkMode.collectAsState()
     val notifyEnabled by appVm.notifyEnabled.collectAsState()
-    val scope = rememberCoroutineScope()
-    val gapChoices = com.zhiyin.data.AccountApi.activeGapChoices
-    var gapMin by remember { mutableIntStateOf(20) }
-    var gapSlider by remember { mutableFloatStateOf(1f) }
-    LaunchedEffect(Unit) {
-        com.zhiyin.data.AccountApi.getActiveGap().onSuccess { saved ->
-            val idx = gapChoices.indexOf(saved).let { if (it < 0) 1 else it }
-            gapMin = gapChoices[idx]
-            gapSlider = idx.toFloat()
-        }
-    }
     val themeId by appVm.themeId.collectAsState()
     var showLogout by remember { mutableStateOf(false) }
     var showThemePicker by remember { mutableStateOf(false) }
@@ -1026,29 +1101,6 @@ fun SettingsScreen(
                         startAction = { MenuIcon(Icons.Rounded.Notifications) },
                         checked = notifyEnabled,
                         onCheckedChange = { appVm.toggleNotify(it) },
-                    )
-                    RowDivider()
-                    SliderPreference(
-                        value = gapSlider,
-                        onValueChange = { raw ->
-                            val idx = raw.roundToInt().coerceIn(0, gapChoices.lastIndex)
-                            gapSlider = idx.toFloat()
-                            gapMin = gapChoices[idx]
-                        },
-                        title = "离开多久后主动发",
-                        summary = "对所有角色生效。安静这么久后可以主动找你，发出后至少再隔 2 小时。",
-                        startAction = { MenuIcon(Icons.Rounded.Schedule) },
-                        valueText = com.zhiyin.data.AccountApi.activeGapLabel(gapMin),
-                        valueRange = 0f..gapChoices.lastIndex.toFloat(),
-                        steps = gapChoices.size - 2,
-                        onValueChangeFinished = {
-                            val picked = gapChoices[gapSlider.roundToInt().coerceIn(0, gapChoices.lastIndex)]
-                            scope.launch {
-                                com.zhiyin.data.AccountApi.saveActiveGap(picked)
-                                    .onSuccess { appVm.showToast("已改为离开${com.zhiyin.data.AccountApi.activeGapLabel(it)}后主动发") }
-                                    .onFailure { appVm.showToast(it.message ?: "保存失败") }
-                            }
-                        },
                     )
                 }
 
