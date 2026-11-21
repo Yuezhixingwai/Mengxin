@@ -349,6 +349,8 @@ private fun modelTypeName(t: String): String = when (t) {
     "asr" -> "识别"
     "image" -> "图片"
     "admin" -> "管理员"
+    /* 2026-11-21：灵心币↔余额 互转的流水也是灵心币变动，落到这张调用记录里 */
+    "exchange" -> "兑换"
     else -> t
 }
 

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Redeem
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.SyncAlt
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -476,19 +477,7 @@ fun WalletScreen(appVm: AppViewModel, onBack: () -> Unit) {
                         )
                     }
 
-                    val txs = wallet?.transactions ?: emptyList()
-                    if (txs.isEmpty()) {
-                        EmptyHint("暂无交易记录，去给TA发个转账或红包吧～")
-                    } else {
-                        CardContainer {
-                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                txs.forEach { tx ->
-                                    WalletTxRow(tx)
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
+                    /* 2026-11-21：兑换 / 支付密码两张卡片挪到账单上面（老板要求），账单沉到页面下方 */
                     CardContainer {
                         IconActionRow(
                             icon = Icons.Rounded.SwapHoriz,
@@ -504,6 +493,19 @@ fun WalletScreen(appVm: AppViewModel, onBack: () -> Unit) {
                             summary = if (payEnabled) "已设置（转账前需验证）" else "未设置（免密转账）",
                             onClick = { payPassSetup = true },
                         )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    val txs = wallet?.transactions ?: emptyList()
+                    if (txs.isEmpty()) {
+                        EmptyHint("暂无交易记录，去给TA发个转账或红包吧～")
+                    } else {
+                        CardContainer {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                txs.forEach { tx ->
+                                    WalletTxRow(tx)
+                                }
+                            }
+                        }
                     }
                     Spacer(Modifier.height(32.dp))
                 }
@@ -635,12 +637,20 @@ private fun ExchangeDialog(
 @Composable
 private fun WalletTxRow(tx: AccountApi.WalletTx) {
     val colors = MiuixTheme.colorScheme
+    /* 2026-11-21：收支方向必须按 type 判，不能"不是转账就默认收入"。
+       原来只认 transfer_out/redpacket_out 为支出，exchange_out（余额→灵心币，余额变少）
+       落进 else 分支被显示成"收入 +"，线上 13 笔真实扣款全显示反了。 */
+    val isExpense = tx.type == "transfer_out" || tx.type == "redpacket_out" || tx.type == "exchange_out"
     val (title, icon, tint) = when (tx.type) {
         "transfer_out" -> Triple(if (tx.persona.isEmpty()) "转账" else "转账给 ${tx.persona}", Icons.Rounded.SwapHoriz, Color(0xFFF5A623))
         "redpacket_out" -> Triple(if (tx.note.isEmpty()) "发红包" else "发红包 ${tx.note}", Icons.Rounded.Redeem, Color(0xFFE85D4A))
+        "exchange_in" -> Triple("灵心币 → 余额", Icons.Rounded.SyncAlt, Color(0xFF34B78F))
+        "exchange_out" -> Triple("余额 → 灵心币", Icons.Rounded.SyncAlt, Color(0xFF7C6BF5))
         else -> Triple("收入", Icons.Rounded.Savings, Color(0xFF34B78F))
     }
-    val sign = if (tx.type == "transfer_out" || tx.type == "redpacket_out") "-" else "+"
+    val sign = if (isExpense) "-" else "+"
+    /* 兑换类把说明带上（"-8000" 后面能看出换到了多少灵心币），其余仍显示时间 */
+    val sub = if (tx.type.startsWith("exchange") && tx.note.isNotEmpty()) "${tx.note} · ${tx.time}" else tx.time
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -659,13 +669,13 @@ private fun WalletTxRow(tx: AccountApi.WalletTx) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontSize = 14.sp, color = colors.onSurface)
             Spacer(Modifier.height(2.dp))
-            Text(tx.time, fontSize = 12.sp, color = colors.onSurfaceVariantActions)
+            Text(sub, fontSize = 12.sp, color = colors.onSurfaceVariantActions)
         }
         Text(
             "$sign$${fmtMoney(tx.amount)}",
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
-            color = if (sign == "-") colors.onSurface else Color(0xFF34B78F),
+            color = if (isExpense) colors.onSurface else Color(0xFF34B78F),
         )
     }
 }

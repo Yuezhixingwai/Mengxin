@@ -66,6 +66,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private class PendingImage(val bytes: ByteArray)
 
+/* 2026-11-21：人设正文上限，与服务端 persona_compress.js 的 MAX_PERSONA_CHARS 保持一致。
+   人设每轮对话都随 system 整段下发，越长越费；这里前后端同口径，避免用户写完才被拒。 */
+private const val PERSONA_MAX_CHARS = 10000
+
 private data class EditForm(
     var name: String = "",
     var slogan: String = "",
@@ -149,6 +153,11 @@ fun PersonaEditScreen(
     fun save() {
         if (form.name.isBlank()) { appVm.showToast("请填写人设名称"); return }
         if (form.light.isBlank()) { appVm.showToast("请填写人设简介"); return }
+        /* 存量人设可能超过上限（编辑页加载时原样带出），输入框的截断管不到这里，保存前必须再拦一道 */
+        if (form.full.trim().length > PERSONA_MAX_CHARS) {
+            appVm.showToast("人设最多 $PERSONA_MAX_CHARS 字，当前 ${form.full.trim().length} 字，请精简后再保存")
+            return
+        }
         if (saving) return
         saving = true
         val tags = form.tags.split(Regex("[\\s,，#]+")).map { it.trim() }.filter { it.isNotEmpty() }.take(20)
@@ -254,8 +263,17 @@ fun PersonaEditScreen(
                 label = "简介 *（一句话介绍）", useLabelAsPlaceholder = true, modifier = Modifier.fillMaxWidth(), minLines = 2,
             )
             TextField(
-                value = form.full, onValueChange = { form = form.copy(full = it.take(60000)) },
-                label = "完整人设（可选，会压缩上传）", useLabelAsPlaceholder = true, modifier = Modifier.fillMaxWidth(), minLines = 5,
+                value = form.full, onValueChange = { form = form.copy(full = it.take(PERSONA_MAX_CHARS)) },
+                label = "完整人设（可选，最多 $PERSONA_MAX_CHARS 字）", useLabelAsPlaceholder = true, modifier = Modifier.fillMaxWidth(), minLines = 5,
+            )
+            /* 2026-11-21：字数提示。人设是每轮 system 的一部分，超长直接反映到成本与响应速度上 */
+            Text(
+                if (form.full.length >= PERSONA_MAX_CHARS) "$PERSONA_MAX_CHARS / $PERSONA_MAX_CHARS 字 · 已达上限，再输入不会被保存"
+                else if (form.full.isEmpty()) "最多 $PERSONA_MAX_CHARS 字 · 人设越长每轮对话越费算力，建议 3000 字以内"
+                else "${form.full.length} / $PERSONA_MAX_CHARS 字 · 建议 3000 字以内，越短越省算力",
+                fontSize = 12.sp,
+                color = if (form.full.length >= PERSONA_MAX_CHARS) colors.primary else colors.onSurfaceVariantSummary,
+                modifier = Modifier.padding(start = 4.dp),
             )
             TextField(
                 value = form.pat, onValueChange = { form = form.copy(pat = it.take(100)) },

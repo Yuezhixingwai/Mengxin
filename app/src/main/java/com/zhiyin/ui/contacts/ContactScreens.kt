@@ -96,6 +96,10 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/* 2026-11-21：人设正文上限，与服务端 persona_compress.js / PersonaEditScreen 同口径。
+   人设每轮对话都随 system 下发，超长直接推高成本与延迟。 */
+private const val PERSONA_MAX_CHARS = 10000
+
 @Composable
 fun AddFriendScreen(
     appVm: AppViewModel,
@@ -624,16 +628,27 @@ fun FriendSettingsScreen(
                                 }
                             }
                         } else {
-                            TextField(
-                                value = persona,
-                                onValueChange = { persona = it },
-                                label = "AI人设描述（性格、说话方式等）",
-                                useLabelAsPlaceholder = true,
-                                minLines = 4,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                            )
+                            Column {
+                                TextField(
+                                    value = persona,
+                                    /* 2026-11-21：超过上限直接截断（粘贴长文时也能立刻看出少了内容），
+                                       下方计数器同步显示，避免用户白写一大堆被服务端拒。 */
+                                    onValueChange = { persona = it.take(PERSONA_MAX_CHARS) },
+                                    label = "AI人设描述（性格、说话方式等，最多 $PERSONA_MAX_CHARS 字）",
+                                    useLabelAsPlaceholder = true,
+                                    minLines = 4,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                )
+                                Text(
+                                    if (persona.length >= PERSONA_MAX_CHARS) "$PERSONA_MAX_CHARS / $PERSONA_MAX_CHARS 字 · 已达上限"
+                                    else "${persona.length} / $PERSONA_MAX_CHARS 字",
+                                    fontSize = 12.sp,
+                                    color = if (persona.length >= PERSONA_MAX_CHARS) colors.primary else colors.onSurfaceVariantSummary,
+                                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -667,6 +682,13 @@ fun FriendSettingsScreen(
                     }
                     val token = AppSession.token()
                     val newPersona = if (official) friend.persona else persona.trim()
+                    /* 2026-11-21：存量人设可能带着超长内容进来（旧广场抄入的），
+                       只有真正改动了人设才拦；只改备注名/头像/免打扰的放行，与服务端判断一致。 */
+                    val _npText = newPersona ?: ""
+                    if (!official && _npText.length > PERSONA_MAX_CHARS && _npText != (friend.persona ?: "").trim()) {
+                        onToast("人设最多 $PERSONA_MAX_CHARS 字，当前 ${_npText.length} 字，请精简后再保存")
+                        return@Button
+                    }
                     val rp = context.getSharedPreferences("zhiyin_remark", 0)
                     val orig = rp.getString("orig_${friend.id}", null)
                     val renamed = newName != (savedRemark ?: friend.name)

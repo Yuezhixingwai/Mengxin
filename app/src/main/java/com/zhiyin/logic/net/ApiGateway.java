@@ -36,6 +36,8 @@ public class ApiGateway {
         if (memUrl != null && !memUrl.isEmpty()) memoryServiceUrl = memUrl;
         CookieStore.init(ctx);
         com.zhiyin.logic.data.SessionStore.init(ctx);
+        // 设备指纹/机型/系统版本初始化（每个请求都会带到服务端审计日志，用于出事定位到设备）
+        DeviceInfo.init(ctx);
     }
 
     public static void setServerUrl(Context ctx, String url) {
@@ -150,6 +152,7 @@ public class ApiGateway {
     public static String memoryRequestSync(String url, String method, String jsonBody, String userId) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         applySSL(conn);
+        DeviceInfo.apply(conn);
         conn.setRequestMethod(method);
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         String token = getToken();
@@ -265,6 +268,7 @@ public class ApiGateway {
     public static String requestSync(String url, String method, String jsonBody, String token) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         applySSL(conn);
+        DeviceInfo.apply(conn);
         conn.setRequestMethod(method);
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         if (token != null && !token.isEmpty()) conn.setRequestProperty("Authorization", "Bearer " + token);
@@ -314,6 +318,7 @@ public class ApiGateway {
         File file = new File(filePath);
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         applySSL(conn);
+        DeviceInfo.apply(conn);
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
         if (token != null && !token.isEmpty()) conn.setRequestProperty("Authorization", "Bearer " + token);
@@ -389,6 +394,7 @@ public class ApiGateway {
         java.net.URL url = new java.net.URL(fullUrl);
         java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
         applySSL(conn);
+        DeviceInfo.apply(conn);
         conn.setRequestMethod("GET");
         String token = getToken(ctx);
         if (token != null) conn.setRequestProperty("Authorization", "Bearer " + token);
@@ -411,6 +417,7 @@ public class ApiGateway {
         java.net.URL url = new java.net.URL(fullUrl);
         java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
         applySSL(conn);
+        DeviceInfo.apply(conn);
         conn.setRequestMethod("GET");
         String cookie = CookieStore.get();
         if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
@@ -445,6 +452,7 @@ public class ApiGateway {
         java.net.URL url = new java.net.URL(fullUrl);
         java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
         applySSL(conn);
+        DeviceInfo.apply(conn);
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
