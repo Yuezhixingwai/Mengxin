@@ -44,6 +44,9 @@ import com.zhiyin.ui.auth.AuthScreen
 import com.zhiyin.ui.components.AppLockScreen
 import com.zhiyin.ui.components.LingXinDialog
 import com.zhiyin.ui.components.LingXinToastHost
+import com.zhiyin.ui.components.NotifyRequiredScreen
+import com.zhiyin.ui.components.notificationsAllowed
+import com.zhiyin.ui.components.openNotificationSettings
 import com.zhiyin.ui.settings.RealNameVerifyDialog
 import com.zhiyin.ui.theme.LingXinTheme
 import com.zhiyin.ui.vm.AppViewModel
@@ -93,6 +96,51 @@ class MainActivity : ComponentActivity() {
             val themeId by appVm.themeId.collectAsState()
 
             LaunchedEffect(PrivacyManager.secureFlagOn) { applySecureFlag() }
+
+            // ===== 通知权限强制门禁（2026-11-21）=====
+            // 产品要求：不开启通知就不给用。主动消息是本应用核心体验，
+            // 没有通知权限时用户根本感知不到对方找过自己，等于功能残缺。
+            var notifyGranted by remember { mutableStateOf(notificationsAllowed(this@MainActivity)) }
+            val notifyPermLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) {
+                notifyGranted = notificationsAllowed(this@MainActivity)
+                // 系统已「不再询问」时不会再弹窗，直接落到设置页
+                if (!notifyGranted) openNotificationSettings(this@MainActivity)
+            }
+            val notifyLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+            DisposableEffect(notifyLifecycle) {
+                val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                    if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                        notifyGranted = notificationsAllowed(this@MainActivity)
+                    }
+                }
+                notifyLifecycle.lifecycle.addObserver(observer)
+                onDispose { notifyLifecycle.lifecycle.removeObserver(observer) }
+            }
+            val requestNotification: () -> Unit = {
+                val ctx = this@MainActivity
+                val runtimeGranted = Build.VERSION.SDK_INT >= 33 &&
+                    ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                when {
+                    // Android 13+ 还没拿到运行时权限：先走系统弹窗
+                    Build.VERSION.SDK_INT >= 33 && !runtimeGranted ->
+                        notifyPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    // 权限已给但通知被关：只能引导到系统设置
+                    else -> openNotificationSettings(ctx)
+                }
+            }
+
+            if (!notifyGranted) {
+                LingXinTheme(darkTheme = darkTheme, themeId = themeId) {
+                    NotifyRequiredScreen(
+                        onRequest = requestNotification,
+                        onExit = { finish() },
+                    )
+                }
+                return@setContent
+            }
 
             LingXinTheme(darkTheme = darkTheme, themeId = themeId) {
                 Box(Modifier.fillMaxSize()) {

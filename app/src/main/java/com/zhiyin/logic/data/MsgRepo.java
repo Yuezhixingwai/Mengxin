@@ -1059,6 +1059,57 @@ public class MsgRepo {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * 2026-11-21 新增：按前缀找到最后一条消息并替换，同时同步到 9005 记忆库
+     * （DELETE 旧消息 by time + POST 新消息）。
+     * 用途：图片/文件上传被服务端拒绝时撤回——updateLast 只改本地，9005 会留下原文引用，
+     * 其他登录同账号的设备会看到。必须用本方法才能把 9005 里的旧引用一并删掉。
+     */
+    public static void replaceByPrefix(Context ctx, String sid, String oldPrefix, String role, String content) {
+        try {
+            final long oldTime;
+            synchronized (sLock) {
+                JSONArray arr = loadArr(ctx, sid);
+                int idx = -1;
+                for (int i = arr.length() - 1; i >= 0; i--) {
+                    JSONObject o = arr.optJSONObject(i);
+                    if (o != null && o.optString("content", "").startsWith(oldPrefix)) { idx = i; break; }
+                }
+                if (idx < 0) return;
+                oldTime = arr.optJSONObject(idx).optLong("time", 0);
+                JSONObject newObj = new JSONObject();
+                newObj.put("role", role);
+                newObj.put("content", content);
+                newObj.put("time", System.currentTimeMillis());
+                arr.put(idx, newObj);
+                JSONArray trimmed = trimTail(arr);
+                storeArr(ctx, sid, trimmed);
+                updatePreview(ctx, sid, trimmed);
+            }
+            final String fRole = role;
+            final String fContent = content;
+            new Thread(() -> {
+                try {
+                    ApiGateway.ensureMemoryServiceUrl(ctx);
+                    String memUrl = ApiGateway.getMemoryServiceUrl();
+                    String userId = ApiGateway.getUserId(ctx);
+                    if (memUrl == null || memUrl.isEmpty() || userId == null || userId.isEmpty()) return;
+                    if (oldTime > 0) {
+                        try {
+                            ApiGateway.memoryRequestSync(memUrl + "/api/chat/" + java.net.URLEncoder.encode(sid, "UTF-8") + "?time=" + oldTime, "DELETE", null, userId);
+                        } catch (Exception ignored) {}
+                    }
+                    org.json.JSONObject body = new org.json.JSONObject();
+                    body.put("role", fRole);
+                    body.put("content", fContent);
+                    body.put("time", System.currentTimeMillis());
+                    body.put("platform", "android_app");
+                    ApiGateway.memoryRequestSync(memUrl + "/api/chat/" + java.net.URLEncoder.encode(sid, "UTF-8"), "POST", body.toString(), userId);
+                } catch (Exception ignored) {}
+            }).start();
+        } catch (Exception ignored) {}
+    }
+
     public static int getTotalUnreadCount(Context ctx, List<FriendManager.Friend> friends) {
         int total = 0;
         for (FriendManager.Friend f : friends) {

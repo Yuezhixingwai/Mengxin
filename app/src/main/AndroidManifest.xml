@@ -14,6 +14,12 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      后台消息同步前台服务：靠 remoteMessaging 类型保活，保证「不开 App 也能收到主动消息通知」。
+      用 remoteMessaging 而不是 dataSync —— targetSdk 36，Android 15+ 对 dataSync 有 6 小时硬超时。
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -71,6 +77,12 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- 后台消息同步常驻服务（静默前台通知，IMPORTANCE_MIN） -->
+        <service
+            android:name=".service.MsgSyncService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
 
         <service
             android:name=".service.PhoneAgentService"

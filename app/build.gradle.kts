@@ -19,8 +19,8 @@ android {
         applicationId = "com.zhiyin"
         minSdk = 24
         targetSdk = 36
-        versionCode = 35
-        versionName = "2.3.9"
+        versionCode = 36
+        versionName = "2.3.10"
         // 同一 versionCode 复用批次号。每次配置都写新时间会让 BuildConfig 变化，正式包只能全量重编、重跑 R8。
         val batchKey = "$versionCode-$versionName"
         val batchFile = file(".build-batch")

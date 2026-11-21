@@ -56,6 +56,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -342,6 +343,11 @@ fun ChatDetailScreen(
         lastMsgKey = key
     }
     LaunchedEffect(Unit) { vm.enter() }
+    // 离开会话必须清掉 activeSession，否则 MsgRepo.activeSessionId 会永久停在这个角色上，
+    // 导致她的主动消息一直被当成「正在看」而不弹通知、未读也永远为已读。
+    DisposableEffect(Unit) {
+        onDispose { vm.leave() }
+    }
     val syncLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
     LaunchedEffect(vm, syncLifecycle) {
         syncLifecycle.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {

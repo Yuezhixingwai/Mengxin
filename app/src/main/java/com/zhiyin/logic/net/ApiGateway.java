@@ -168,7 +168,7 @@ public class ApiGateway {
         int code = conn.getResponseCode();
         String body = readAll(code < 400 ? conn.getInputStream() : conn.getErrorStream());
         conn.disconnect();
-        if (code < 200 || code >= 300) throw new Exception("HTTP " + code + ": " + body);
+        if (code < 200 || code >= 300) throw new Exception(friendlyMessage(code, body));
         return body;
     }
     private static final ExecutorService executor = Executors.newCachedThreadPool();
@@ -299,8 +299,53 @@ public class ApiGateway {
 
         checkRealNameFlag(body);
 
-        if (code < 200 || code >= 300) throw new Exception("HTTP " + code + ": " + body.substring(0, Math.min(300, body.length())));
+        if (code < 200 || code >= 300) throw new Exception(friendlyMessage(code, body));
         return body;
+    }
+
+    /**
+     * 统一错误翻译（2026-11-21）：任何接口报错都必须变成用户能看懂的中文。
+     * 规则：服务端给了中文 error/message 就直接用；看起来像技术信息（JSON/英文/异常栈/HTTP 码）就用兜底文案。
+     * 目标：用户界面上永不出现 500、404、ECONNRESET、{"error":...} 这类东西。
+     */
+    public static String friendlyMessage(int code, String body) {
+        String msg = extractJsonString(body, "error");
+        if (msg == null || msg.isEmpty()) msg = extractJsonString(body, "message");
+        if (msg != null && !msg.isEmpty() && !looksTechnical(msg)) return msg;
+        return defaultMessageFor(code);
+    }
+
+    /** 把任意错误文案翻译成人话（给聊天等直接落库展示的场景用；拿不准就给软性提示） */
+    public static String humanizeError(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "刚才有点卡，再试一次吧";
+        return looksTechnical(raw) ? "刚才有点卡，再试一次吧" : raw.trim();
+    }
+
+    /** 判断一段文案是不是「用户不该看到的技术信息」 */
+    private static boolean looksTechnical(String s) {
+        if (s == null) return true;
+        String t = s.trim();
+        if (t.isEmpty()) return true;
+        if (t.startsWith("{") || t.startsWith("[") || t.startsWith("<")) return true;
+        String low = t.toLowerCase();
+        if (low.contains("http ") || low.contains("error") || low.contains("exception")
+                || low.contains("econn") || low.contains("timeout") || low.contains("syntaxerror")
+                || low.contains("undefined") || low.contains("null")) return true;
+        // 不含中文的一律视为技术信息
+        return !t.matches(".*[\\u4e00-\\u9fa5].*");
+    }
+
+    /** 按状态码给一个体面的兜底文案 */
+    private static String defaultMessageFor(int code) {
+        if (code == 400) return "请求有点问题，检查一下再试试";
+        if (code == 401) return "登录已过期，请重新登录";
+        if (code == 403) return "这个操作暂时没有权限";
+        if (code == 404) return "内容不存在或已被删除";
+        if (code == 408 || code == 504) return "网络有点慢，请再试一次";
+        if (code == 413) return "文件太大了，换个小一点的试试";
+        if (code == 429) return "操作太频繁了，歇一会儿再试";
+        if (code >= 500) return "服务器开小差了，请稍后重试";
+        return "网络不太稳定，请稍后重试";
     }
 
     public static void upload(String path, String filePath, String token, Callback cb) {
@@ -350,8 +395,43 @@ public class ApiGateway {
         String body = readAll(code < 400 ? conn.getInputStream() : conn.getErrorStream());
         conn.disconnect();
         checkRealNameFlag(body);
-        if (code < 200 || code >= 300) throw new Exception("HTTP " + code + ": " + body.substring(0, Math.min(300, body.length())));
+        if (code < 200 || code >= 300) throwUploadError(code, body);
         return body;
+    }
+
+    /** 内容被服务端审核拒绝（图片含违规内容）时抛出，供调用方区分处理 */
+    public static class UploadRejectedException extends Exception {
+        public UploadRejectedException(String msg) { super(msg); }
+    }
+
+    /**
+     * 上传类错误的统一出口（2026-11-21）：
+     * 优先透传服务端 error 文案，避免把 `HTTP 400: {"error":"..."}` 这种 JSON 原样弹给用户。
+     */
+    private static void throwUploadError(int code, String body) throws Exception {
+        String msg = friendlyMessage(code, body);
+        if (body != null && body.contains("IMAGE_REJECTED")) throw new UploadRejectedException(msg);
+        throw new Exception(msg);
+    }
+
+    /** 从 JSON 文本里取指定 key 的字符串值（不引 JSON 库，避免解析异常） */
+    private static String extractJsonString(String s, String key) {
+        if (s == null) return null;
+        String pat = "\"" + key + "\"";
+        int i = s.indexOf(pat);
+        if (i < 0) return null;
+        int c = s.indexOf(':', i + pat.length());
+        if (c < 0) return null;
+        int q1 = s.indexOf('"', c + 1);
+        if (q1 < 0) return null;
+        StringBuilder sb = new StringBuilder();
+        for (int k = q1 + 1; k < s.length(); k++) {
+            char ch = s.charAt(k);
+            if (ch == '\\' && k + 1 < s.length()) { sb.append(s.charAt(++k)); continue; }
+            if (ch == '"') break;
+            sb.append(ch);
+        }
+        return sb.toString();
     }
 
     public static String postSync(String url, String jsonBody, String token) throws Exception {
@@ -401,7 +481,7 @@ public class ApiGateway {
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(15000);
         int code = conn.getResponseCode();
-        if (code != 200) throw new Exception("HTTP " + code);
+        if (code != 200) throw new Exception(friendlyMessage(code, null));
         java.io.InputStream is = conn.getInputStream();
         java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
         byte[] buf = new byte[4096];
@@ -435,7 +515,7 @@ public class ApiGateway {
                 }
             }
         } catch (Throwable ignored) {}
-        if (code != 200) throw new Exception("HTTP " + code);
+        if (code != 200) throw new Exception(friendlyMessage(code, null));
         java.io.InputStream is = conn.getInputStream();
         java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
         byte[] buf = new byte[4096];

@@ -175,7 +175,7 @@ public class ChatEngine {
                 String resp = ApiGateway.postSync(ApiGateway.ZHIYIN_BASE + "/api/chat", body.toString(), fToken);
                 JSONObject json = new JSONObject(resp);
                 if (json.has("error")) {
-                    String err = json.optString("error", "回复失败");
+                    String err = ApiGateway.humanizeError(json.optString("error", ""));
                     MsgRepo.add(ctx, sid, "ai", "[Error] " + err);
                     notifyChanged();
                     if (cb != null) MAIN.post(() -> cb.onError(err));
@@ -306,7 +306,7 @@ public class ChatEngine {
                 JSONObject json = new JSONObject(resp);
 
                 if (json.has("error")) {
-                    String err = json.optString("error");
+                    String err = ApiGateway.humanizeError(json.optString("error"));
                     lastSearchSourcesJson = "";
                     MsgRepo.add(ctx, sid, "ai", "[Error] " + err);
                     notifyChanged();
@@ -662,7 +662,17 @@ public class ChatEngine {
                 notifyNotice("图片已发送");
                 recognizeImage(ctx, p, localPath, fToken);
             } catch (Exception e) {
-                notifyNotice("图片上传失败: " + e.getMessage());
+                /* 2026-11-21：上传失败（无论审核拒绝还是网络问题）都要撤回——
+                   消息是上传前乐观写进本地并已同步 9005 的，不撤回的话 9005 会留下引用，
+                   其他登录同账号的设备能看到。replaceByPrefix 会同时 DELETE 9005 旧记录。 */
+                boolean rejected = e instanceof ApiGateway.UploadRejectedException;
+                MsgRepo.replaceByPrefix(ctx, sid, "[image]" + localPath, "user",
+                        rejected ? "[这张图片未发送]" : "[图片发送失败，请重试]");
+                notifyChanged();
+                String em = e.getMessage();
+                notifyNotice((em == null || em.isEmpty())
+                        ? (rejected ? "这张图片含有违规内容，无法发送，请换一张" : "图片上传失败，请稍后重试")
+                        : em);
             }
         }).start();
     }
@@ -732,7 +742,16 @@ public class ChatEngine {
                 }
                 notifyNotice("文件已发送");
             } catch (Exception e) {
-                notifyNotice("文件上传失败: " + e.getMessage());
+                /* 2026-11-21：文件上传失败同样撤回（本地 + 9005）。
+                   图片走 sendFile 入口时会被内容审核拒绝（UploadRejectedException），这是本次漏同步的根因。 */
+                boolean rejected = e instanceof ApiGateway.UploadRejectedException;
+                MsgRepo.replaceByPrefix(ctx, sid, msgKey, "user",
+                        rejected ? "[这个文件未发送]" : "[文件发送失败，请重试]");
+                notifyChanged();
+                String em = e.getMessage();
+                notifyNotice((em == null || em.isEmpty())
+                        ? (rejected ? "这张图片含有违规内容，无法发送，请换一张" : "文件上传失败，请稍后重试")
+                        : em);
             }
         }).start();
     }
