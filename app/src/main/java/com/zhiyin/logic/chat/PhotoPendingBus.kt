@@ -21,7 +21,7 @@ object PhotoPendingBus {
 
     fun start(persona: String, hint: String, etaSec: Int) {
         val h = if (hint.isBlank()) "在拍了，稍等一下" else hint
-        val e = if (etaSec <= 0) 50 else etaSec
+        val e = if (etaSec <= 0) 150 else etaSec
         state.value = State(persona ?: "", h, e)
     }
 

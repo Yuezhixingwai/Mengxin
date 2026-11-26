@@ -191,7 +191,7 @@ public class ChatEngine {
                         .trim();
                 if (json.optBoolean("photo_pending", false)) {
                     com.zhiyin.logic.chat.PhotoPendingBus.INSTANCE.start(
-                            p.name, json.optString("photo_hint", ""), json.optInt("photo_eta", 50));
+                            p.name, json.optString("photo_hint", ""), json.optInt("photo_eta", 150));
                     notifyChanged();
                     pollPendingPhoto(ctx, sid, p.name);
                 }
@@ -360,7 +360,7 @@ public class ChatEngine {
                     com.zhiyin.logic.chat.PhotoPendingBus.INSTANCE.start(
                             p.name,
                             json.optString("photo_hint", ""),
-                            json.optInt("photo_eta", 50));
+                            json.optInt("photo_eta", 150));
                     notifyChanged();
                     pollPendingPhoto(ctx, sid, p.name);
                 }
@@ -399,7 +399,9 @@ public class ChatEngine {
                         notifyChanged();
                     }
                     String stickerText = displayReply;
-                    boolean sendSticker = prefs(ctx).getBoolean("sticker_enabled", true) && Math.random() < 0.15;
+                    // 2026-11-26 停用客户端本地贴纸注入：内置贴纸只有一套「白发猫耳少女」形象，
+                    // 本地注入只看情绪不看人设，已造成大面积形象违和；贴纸统一改由服务端按人设判定下发。
+                    boolean sendSticker = false;
                     String stickerFileName = sendSticker ? StickerManager.getStickerFileNameForText(displayReply) : null;
                     if (stickerFileName != null) {
                         StickerManager.StickerItem si = StickerManager.findStickerItem(stickerFileName);
@@ -623,7 +625,9 @@ public class ChatEngine {
                 String reply = json.optString("reply", "");
                 if (!reply.isEmpty() && !reply.startsWith("[错误]")) {
                     String stickerText = reply;
-                    boolean sendSticker = prefs(ctx).getBoolean("sticker_enabled", true) && Math.random() < 0.15;
+                    // 2026-11-26 停用客户端本地贴纸注入：内置贴纸只有一套「白发猫耳少女」形象，
+                    // 本地注入只看情绪不看人设，已造成大面积形象违和；贴纸统一改由服务端按人设判定下发。
+                    boolean sendSticker = false;
                     String stickerFileName = sendSticker ? StickerManager.getStickerFileNameForText(reply) : null;
                     if (stickerFileName != null) {
                         StickerManager.StickerItem si = StickerManager.findStickerItem(stickerFileName);
@@ -833,7 +837,9 @@ public class ChatEngine {
                 }
                 String text = json.optString("text", "");
                 if (!text.isEmpty()) {
-                    boolean sendSticker = prefs(ctx).getBoolean("sticker_enabled", true) && Math.random() < 0.15;
+                    // 2026-11-26 停用客户端本地贴纸注入：内置贴纸只有一套「白发猫耳少女」形象，
+                    // 本地注入只看情绪不看人设，已造成大面积形象违和；贴纸统一改由服务端按人设判定下发。
+                    boolean sendSticker = false;
                     String stickerFileName = sendSticker ? StickerManager.getStickerFileNameForText(text) : null;
                     if (stickerFileName != null) {
                         StickerManager.StickerItem si = StickerManager.findStickerItem(stickerFileName);
@@ -1619,8 +1625,9 @@ public class ChatEngine {
     private static void pollPendingPhoto(Context ctx, String sid, String personaName) {
         new Thread(() -> {
             try {
-                // 万相图生图实测 40~60s，轮询窗口给足 90s 左右（每 2s 一次），避免刚好错过。
-                for (int i = 0; i < 45; i++) {
+                // gpt-image-2-3 图生图跨境镜像实测 85~192s（2MB PNG），服务端超时已放 5 分钟，
+                // 轮询窗口同步给到 160 次（3.5s + 159×2s ≈ 5.3 分钟）。
+                for (int i = 0; i < 160; i++) {
                     Thread.sleep(i == 0 ? 3500L : 2000L);
                     String t = token(ctx);
                     if (t == null || t.isEmpty()) return;
